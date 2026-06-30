@@ -259,3 +259,44 @@ input[type=range]{width:100%;accent-color:var(--accent);margin:2px 0}
   #panel{width:100%;min-width:0;height:auto;max-height:54vh;order:2;border-right:0;border-top:1px solid var(--line)}
   #mapwrap{order:1;min-height:46vh}
 }
+
+/* ===== about modal v2 (tabbed guide) ===== */
+.about-modal{width:100%;max-width:580px;max-height:86vh;overflow:auto;position:relative;
+  background:var(--card);border-radius:16px;box-shadow:var(--shadow)}
+.modal-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:15px 18px 0}
+.modal-head h2{margin:0;font-size:18px;font-weight:800;letter-spacing:-.2px}
+.close-btn{border:0;background:0;font-size:24px;line-height:1;color:var(--ink2);cursor:pointer;padding:0 4px}
+.close-btn:hover{color:var(--ink)}
+.about-tabs{display:flex;gap:3px;background:var(--chip);border-radius:11px;padding:3px;margin:12px 18px;
+  position:sticky;top:0;z-index:2}
+.about-tab{flex:1;border:0;background:transparent;color:var(--ink2);font-weight:600;font-size:12px;
+  padding:8px 4px;border-radius:8px;cursor:pointer;transition:.15s}
+.about-tab:hover{color:var(--ink)}
+.about-tab.active{background:var(--card);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.18)}
+.about-panel{display:none;padding:2px 18px 18px}
+.about-panel.active{display:block}
+.about-panel h4{margin:15px 0 6px;font-size:14px;font-weight:700}
+.about-panel h5{margin:0 0 4px;font-size:13px;font-weight:700;color:var(--ink)}
+.about-panel p{font-size:13px;color:var(--ink);line-height:1.55;margin:6px 0}
+.about-panel ul{margin:6px 0;padding-left:18px}
+.about-panel li{font-size:12.5px;color:var(--ink2);line-height:1.5;margin:3px 0}
+.about-panel li strong,.about-panel p strong{color:var(--ink);font-weight:600}
+.about-intro{background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:11px 14px}
+.about-intro p:first-child{margin-top:0}
+.criteria-block,.source-block{background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:11px 13px;margin:9px 0}
+.criteria-block p:first-of-type,.source-block p:first-of-type{margin-top:2px}
+.note{font-size:12px;color:var(--ink2);font-style:italic;margin:7px 0 0}
+.note-box{background:rgba(255,159,10,.1);border:1px solid rgba(255,159,10,.3);border-radius:12px;
+  padding:12px 14px;margin:12px 0;font-size:12.5px;color:var(--ink);line-height:1.55}
+.note-box strong{color:var(--ink);font-weight:700}
+.small{font-size:11.5px;color:var(--ink2);margin-top:10px;line-height:1.5}
+/* glossary (override the dt/dd grid from the old guide) */
+.glossary{display:flex;flex-direction:column;gap:6px;margin:7px 0;grid-template-columns:none}
+.glossary>div{font-size:12.5px;color:var(--ink2);line-height:1.45;background:var(--bg);
+  border:1px solid var(--line);border-radius:9px;padding:7px 11px}
+.glossary>div strong{color:var(--ink);font-weight:700}
+.modal-foot{position:sticky;bottom:0;background:var(--card);border-top:1px solid var(--line);
+  padding:12px 18px;display:flex;justify-content:flex-end}
+.modal-foot .btn{border:0;background:var(--accent);color:#fff;border-radius:10px;padding:9px 18px;
+  font-weight:600;font-size:13px;cursor:pointer}
+.modal-foot .btn:hover{filter:brightness(1.08)}

@@ -82,199 +82,145 @@
   </main>
 </div>
 
-<div id="aboutModal" class="modal hidden">
-  <div class="modal-box card">
-    <button class="close" id="aboutClose" aria-label="Close">×</button>
-    <h2>Guide &amp; data sources</h2>
-    <p class="modal-intro">Liveable Melbourne scores all <b>361 Greater Melbourne suburbs</b>
-       (ABS areas) from <b>0–100</b> on two things — how good they are to <b>live in</b>, and their
-       <b>potential to invest in or develop</b>. Higher is always better; neither goal is “better”
-       than the other — it depends what you’re looking for.</p>
-    <p class="methodstate" id="methodState"></p>
-
-    <div class="gtabs" id="guideTabs">
-      <button data-tab="start" class="on">Start here</button>
-      <button data-tab="map">Reading the map</button>
-      <button data-tab="scores">Scores &amp; criteria</button>
-      <button data-tab="data">Data &amp; sources</button>
+<div id="aboutModal" class="modal hidden" aria-hidden="true">
+  <div class="modal-content about-modal">
+    <div class="modal-head">
+      <h2>How to use Liveable Melbourne</h2>
+      <button class="close-btn" id="closeAbout" aria-label="Close">×</button>
     </div>
 
-    <!-- TAB: start -->
-    <div class="gtab" data-panel="start">
-      <h3>The two scores, in plain English</h3>
-      <div class="sk-list">
-        <div class="sk-item"><div class="sk-ico" style="background:#2e9e5b">🏠</div>
-          <div><b>Liveability</b><span>How good is it to <b>live or rent</b> here right now? Built
-            from personal safety, socio-economic advantage and a settled housing mix.</span></div></div>
-        <div class="sk-item"><div class="sk-ico" style="background:#2f6df0">🏗️</div>
-          <div><b>Development potential</b> <span class="prelim">preliminary</span>
-            <span>How much room is there to <b>add value</b> — build, subdivide or invest? Built from
-            low-density housing, recent price growth and electricity-grid support.</span></div></div>
-        <div class="sk-item"><div class="sk-ico" style="background:#8a8a8e">⚖️</div>
-          <div><b>Overall</b><span>A blend of the two. The slider sets the mix; a preset picks it for you.</span></div></div>
-      </div>
-
-      <h3>Use it in 10 seconds</h3>
-      <ol class="guide-steps">
-        <li>Tap a <b>“Show me the best”</b> button, or a <b>preset</b> — the map recolours and the list re-ranks.</li>
-        <li>Higher-scoring areas stand out in colour. Skim the <b>ranked list</b> in the panel.</li>
-        <li><b>Click any suburb</b> for its full scorecard and plain-English read-outs.</li>
-      </ol>
-
-      <h3>Slider, modes &amp; presets</h3>
-      <ul class="keylist">
-        <li><b>Slider</b> — drag Liveability ↔ Development to weight the <b>Overall</b> score.</li>
-        <li><b>Modes</b> (Live / Balanced / Invest) — change the colour palette; Live mode also leans the
-          liveability weighting toward families.</li>
-        <li><b>Presets</b> — one tap sets the slider, palette and map colour for a goal.</li>
-        <li><b>Show me the best</b> — highlights the top ~20 areas for living, investing or developing.</li>
-      </ul>
+    <!-- Tabs -->
+    <div class="about-tabs">
+      <button class="about-tab active" data-tab="start">Start here</button>
+      <button class="about-tab" data-tab="map">Reading the map</button>
+      <button class="about-tab" data-tab="criteria">Scores &amp; criteria</button>
+      <button class="about-tab" data-tab="sources">Data &amp; sources</button>
     </div>
 
-    <!-- TAB: reading the map -->
-    <div class="gtab hidden" data-panel="map">
-      <h3>Map colour = the score (0–100)</h3>
-      <div class="scalekey">
-        <span class="muted">lower</span>
-        <div class="bands"><i style="background:#d7263d"></i><i style="background:#f08c2e"></i><i style="background:#f3c613"></i><i style="background:#5bbf3a"></i><i style="background:#1f8a3b"></i></div>
-        <span class="muted">higher</span>
+    <!-- TAB 1: Start here -->
+    <div id="tab-start" class="about-panel active">
+      <div class="about-intro">
+        <p><strong>This tool helps you compare Melbourne suburbs</strong> across two main goals:</p>
+        <ul>
+          <li><strong>Live or rent</strong> — where is it safer and more stable for you or your family?</li>
+          <li><strong>Invest or develop</strong> — where is there genuine potential for growth or redevelopment?</li>
+        </ul>
+        <p>You can switch between views using the mode buttons and presets at the top of the panel. Everything updates instantly.</p>
       </div>
-      <p class="muted">The palette shifts with the mode so the feel matches your goal —
-        <b>Balanced</b> red→green, <b>Live</b> calm greens, <b>Invest</b> blue→gold. The map’s
-        bottom-right legend always shows the current scale and what it’s colouring.</p>
-
-      <h3>Letter grades (on each scorecard)</h3>
-      <div class="grades-key">
-        <span><i style="background:#248a3d"></i>A+ / A excellent</span>
-        <span><i style="background:#e0a400"></i>B good</span>
-        <span><i style="background:#ff9500"></i>C fair</span>
-        <span><i style="background:#ff3b30"></i>D weak</span>
-      </div>
-
-      <h3>Colour the map by one thing</h3>
-      <ul class="keylist two-col">
-        <li><b>Overall / Liveability / Development</b> — the headline scores.</li>
-        <li><b>Safety</b> — personal-crime rate (greener = lower).</li>
-        <li><b>Socio-economic</b> — ABS SEIFA advantage.</li>
-        <li><b>Family</b> — the family-suitability score.</li>
-        <li><b>Price growth</b> — recent 3-year capital growth.</li>
-        <li><b>Grid</b> — electricity-network support.</li>
-      </ul>
-
-      <h3>Other controls</h3>
-      <ul class="keylist">
-        <li><b>Hide weaker areas below</b> — drag to fade everything under a score, so only stronger areas remain.</li>
-        <li><b>⚡ Show electricity network</b> — overlays the real transmission lines and substations.</li>
-      </ul>
-      <h4>Electricity overlay key</h4>
-      <div class="elec-key">
-        <span><i class="line" style="background:#e5484d"></i>500 kV transmission</span>
-        <span><i class="line" style="background:#f76808"></i>220 kV transmission</span>
-        <span><i class="line" style="background:#2a78d6"></i>66 kV line</span>
-        <span><i class="dot" style="background:#e6a700"></i>Substation</span>
+      <div class="quick-tips">
+        <h4>Quick tips</h4>
+        <ul>
+          <li>Click any suburb on the map or in the list to see its full scorecard.</li>
+          <li>Use the slider to blend Liveability and Development Potential however you like.</li>
+          <li>Try the one-click presets (Family First, Balanced Investor, Value-Add/Developer) to jump to different viewpoints.</li>
+          <li>Toggle the electricity network layer to see transmission lines and substations.</li>
+        </ul>
       </div>
     </div>
 
-    <!-- TAB: scores & criteria -->
-    <div class="gtab hidden" data-panel="scores">
-      <h3>What makes a score high or low?</h3>
-      <div class="crit">
-        <div class="crit-row"><span class="crit-h crit-live">High Liveability</span>
-          lower personal-crime rate · higher socio-economic advantage (SEIFA) · more settled,
-          owner-occupied housing<span class="crit-fam"> · (Live mode) more children &amp; schools nearby</span></div>
-        <div class="crit-row"><span class="crit-h crit-dev">High Development</span>
-          more low-density detached housing (room to redevelop) · stronger recent price growth ·
-          better electricity-grid support · more rental turnover</div>
-        <div class="crit-row muted">A low score is simply the opposite of these — it isn’t “bad”.
-          A quiet, built-up blue-chip suburb scores high to live and low to develop; a new outer
-          estate often does the reverse.</div>
-      </div>
-      <p class="muted">Every input is <b>ranked against all other Melbourne suburbs</b> (a 0–100
-        percentile), so a score is <b>relative to Melbourne</b>, not an absolute rating.</p>
-
-      <h3 id="liveHead">Liveability — <span class="muted">standard weighting</span></h3>
-      <ul class="wlist" id="liveWeights"></ul>
-      <p class="muted" id="liveNote"></p>
-      <h4>Family suitability <span class="muted">(the 👶 badge)</span></h4>
-      <ul class="wlist" id="famWeights"></ul>
-      <h4>Development potential <span class="prelim">preliminary</span></h4>
-      <ul class="wlist" id="devWeights"></ul>
-
-      <h3>Chips &amp; terms you’ll see</h3>
-      <dl class="glossary">
-        <dt>Very safe / Safe</dt><dd>Lower rate of crimes against the person than most Melbourne suburbs.</dd>
-        <dt>Blue-chip</dt><dd>High socio-economic advantage and very low personal crime.</dd>
-        <dt>Affluent</dt><dd>High socio-economic advantage (SEIFA decile 8+).</dd>
-        <dt>Family-friendly</dt><dd>High family-suitability score — children, schools and safety combined.</dd>
-        <dt>Growth corridor</dt><dd>High development potential with many children — typically a new outer estate.</dd>
-        <dt>Grid-ready</dt><dd>Strong electricity-network support nearby (close to lines + substations).</dd>
-        <dt>Redevelopment headroom</dt><dd>A high share of low-density detached houses — more room to rebuild or subdivide.</dd>
-        <dt>High rental demand</dt><dd>A high share of rented dwellings.</dd>
-        <dt>Tightly held</dt><dd>Mostly owner-occupied with little renting — low turnover.</dd>
-        <dt>Low density / Built-up</dt><dd>Fewer / more people per km² than most suburbs.</dd>
-        <dt>Strong growth</dt><dd>Strong recent 3-year median price growth.</dd>
-        <dt>Affordable upside</dt><dd>Below-median prices alongside development potential.</dd>
-        <dt>Premium market</dt><dd>Above-median prices.</dd>
-        <dt class="muted">Family badge</dt><dd class="muted">“Family-friendly / OK for families / Less family-oriented” — the family-suitability band.</dd>
-      </dl>
-    </div>
-
-    <!-- TAB: data & sources -->
-    <div class="gtab hidden" data-panel="data">
-      <h3>Where the data comes from</h3>
-      <div class="srcblocks">
-        <div class="srcblock" style="--accent:#8a8a8e"><div class="sb-ico">🗺️</div>
-          <div><div class="sb-h">Suburb boundaries <span class="sb-src">ABS SA2 (2021)</span></div>
-            <p>The ~suburb-sized areas every score is attached to (361 across Greater Melbourne).</p></div></div>
-
-        <div class="srcblock" style="--accent:#e24b4a"><div class="sb-ico">🛡️</div>
-          <div><div class="sb-h">Crime <span class="sb-src">Crime Statistics Agency Victoria</span></div>
-            <p>Recorded offences (year ending Mar 2026), split into <b>crimes against the person</b>
-              (assault, robbery, sexual offences) and <b>property crime</b>. Published per council
-              (LGA), so suburbs in one council currently share a rate.</p></div></div>
-
-        <div class="srcblock" style="--accent:#7f77dd"><div class="sb-ico">📊</div>
-          <div><div class="sb-h">Socio-economic <span class="sb-src">ABS SEIFA 2021</span></div>
-            <p>A relative measure of an area’s advantage/disadvantage (IRSAD) and education &amp;
-              occupation (IEO). Higher decile = more advantaged, relative to Australia.</p></div></div>
-
-        <div class="srcblock" style="--accent:#1d9e75"><div class="sb-ico">🏘️</div>
-          <div><div class="sb-h">Housing &amp; family <span class="sb-src">ABS Census 2021</span></div>
-            <p>Owner-occupier vs renter mix, detached houses vs apartments, and the share of children
-              aged 0–14 — used for housing stability, redevelopment headroom and family signals.</p></div></div>
-
-        <div class="srcblock" style="--accent:#0a6fd8"><div class="sb-ico">💰</div>
-          <div><div class="sb-h">Property prices &amp; growth <span class="sb-src">Victorian Valuer-General · Land.Vic</span></div>
-            <p>Median house &amp; unit sale prices (10-year series). We show the latest median,
-              12-month change and 3-year growth. 3-year growth is the figure used in scoring (it
-              smooths small-sample swings).</p></div></div>
-
-        <div class="srcblock" style="--accent:#eda100"><div class="sb-ico">⚡</div>
-          <div><div class="sb-h">Electricity infrastructure <span class="sb-src">AEMO &amp; Geoscience Australia</span></div>
-            <p>National transmission lines and substations. We use <b>distance to the grid</b> and
-              <b>substation density</b> as practical signals of how feasible a larger connection is.
-              <b>Note:</b> detailed substation spare capacity is generally not public, so proximity and
-              density are proxies — they indicate support, not a guaranteed connection.</p></div></div>
-      </div>
-
-      <h3>What’s preliminary / coming next</h3>
-      <ul class="keylist">
-        <li><b>Development potential is preliminary</b> — it shows feasibility signals, not a forecast,
-          and not a guarantee you can build.</li>
-        <li><b>Not yet included:</b> planning zoning &amp; overlays (e.g. <b>VICPLAN</b> — what each lot
-          is actually zoned for, plus heritage / flood / bushfire overlays), rental yields, and
-          address-level detail.</li>
-        <li><b>Crime is council-level</b>, not suburb-level — a planned refinement.</li>
+    <!-- TAB 2: Reading the map -->
+    <div id="tab-map" class="about-panel">
+      <h4>Colouring the map</h4>
+      <p>The map colour changes depending on what you select:</p>
+      <ul>
+        <li><strong>Live mode</strong> — emphasises safety, socio-economic advantage and family-friendly areas (green tones).</li>
+        <li><strong>Balanced mode</strong> — a 50/50 mix of liveability and development potential.</li>
+        <li><strong>Invest / Develop mode</strong> — highlights redevelopment headroom, price growth and infrastructure support (blue-gold tones).</li>
       </ul>
 
-      <details class="rawsrc"><summary>Exact source files used in this build</summary>
-        <ul id="sourceList" class="sources"></ul>
-        <p class="muted" id="genline2"></p>
-      </details>
+      <h4>Key controls</h4>
+      <ul>
+        <li><strong>Slider</strong>: Adjust how much weight you give to Liveability vs Development Potential.</li>
+        <li><strong>Colour by</strong>: Change what the map colours represent (Overall, Liveability, Development, Growth, Grid, etc.).</li>
+        <li><strong>Hide weaker areas</strong>: Slide the minimum score filter to focus only on stronger suburbs.</li>
+        <li><strong>Electricity overlay</strong>: Toggle to show major transmission lines and substations.</li>
+      </ul>
+    </div>
 
-      <p class="caveat"><b>General information only.</b> Built from public data and provided as-is —
-        not financial, legal or planning advice. Always check the planning scheme and do your own
-        due diligence before acting.</p>
+    <!-- TAB 3: Scores & criteria -->
+    <div id="tab-criteria" class="about-panel">
+      <h4>What the scores mean (plain English)</h4>
+
+      <div class="criteria-block">
+        <h5>Liveability Score</h5>
+        <p>Higher = better for living or renting. Combines:</p>
+        <ul>
+          <li>Lower rates of crimes against the person</li>
+          <li>Higher socio-economic advantage (SEIFA)</li>
+          <li>More stable, owner-occupied housing</li>
+          <li>Higher share of families with children (in Family mode)</li>
+        </ul>
+      </div>
+
+      <div class="criteria-block">
+        <h5>Development Potential Score</h5>
+        <p>Higher = more signals that the area may have room to grow or be redeveloped. Combines:</p>
+        <ul>
+          <li>Higher proportion of detached houses (redevelopment headroom)</li>
+          <li>Recent price growth momentum</li>
+          <li>Closer proximity to major electricity transmission infrastructure</li>
+          <li>Higher rental turnover (investor activity)</li>
+        </ul>
+        <p class="note">This score is still preliminary — it does not yet include full planning zoning or overlays.</p>
+      </div>
+
+      <div class="criteria-block">
+        <h5>Overall Score</h5>
+        <p>A blend of the two scores above. You control the balance with the slider or presets.</p>
+      </div>
+
+      <h4>Chip &amp; term glossary</h4>
+      <div class="glossary">
+        <div><strong>Very safe / Safe</strong> — Low rates of personal crime</div>
+        <div><strong>Growth corridor</strong> — Strong recent price growth + redevelopment headroom</div>
+        <div><strong>Grid-ready</strong> — Close to major transmission lines and multiple substations</div>
+        <div><strong>Redevelopment headroom</strong> — High share of detached houses on larger blocks</div>
+        <div><strong>Affordable upside</strong> — Relatively lower prices with growth momentum</div>
+        <div><strong>Premium market</strong> — High prices, typically established or blue-chip areas</div>
+        <div><strong>Tightly held</strong> — High owner-occupier rates, lower rental turnover</div>
+        <div><strong>Family-friendly</strong> — Higher share of families with children + strong safety signals</div>
+      </div>
+    </div>
+
+    <!-- TAB 4: Data & sources -->
+    <div id="tab-sources" class="about-panel">
+      <h4>Where the data comes from</h4>
+
+      <div class="source-block">
+        <h5>Electricity Infrastructure (current layer)</h5>
+        <p><strong>Geoscience Australia</strong> — National Electricity Transmission Lines and Substations (2024).
+        Proximity to major transmission lines and density of substations within 10 km are used as practical signals for development feasibility. Detailed substation capacity data is generally not publicly available.</p>
+        <p class="note">AEMO context is referenced for the broader electricity network; actual geometry comes from Geoscience Australia.</p>
+      </div>
+
+      <div class="source-block">
+        <h5>Property Prices &amp; Growth</h5>
+        <p><strong>Victorian Valuer-General / Land.Vic</strong> — Median house and unit prices by suburb (time series 2014–2024). 12-month change and 3-year compound annual growth rate are calculated from this data.</p>
+      </div>
+
+      <div class="source-block">
+        <h5>Liveability inputs</h5>
+        <ul>
+          <li><strong>Crime Statistics Agency Victoria (CSA)</strong> — Recorded offences by LGA, split into crimes against the person vs property crime (year ending March 2026).</li>
+          <li><strong>Australian Bureau of Statistics (ABS)</strong> — SEIFA 2021 (IRSAD &amp; IEO), Census 2021 housing tenure/structure (G37), and age demographics (G01).</li>
+        </ul>
+      </div>
+
+      <div class="source-block">
+        <h5>Geography</h5>
+        <p><strong>ABS ASGS Edition 3 (2021)</strong> — Statistical Area Level 2 (SA2) boundaries for Greater Melbourne.</p>
+      </div>
+
+      <div class="note-box">
+        <strong>What’s still preliminary / coming next</strong><br>
+        The Development Potential score currently uses housing form, price growth, and electricity proximity. It does <strong>not yet</strong> include full planning controls (zoning, overlays, height limits) from <strong>VICPLAN / Vicmap Planning</strong>. Those layers are planned for a future update and will significantly improve the accuracy of development feasibility signals.
+      </div>
+
+      <p class="small">All data is public and government-sourced. No commercial or proprietary datasets are used. Scores are percentile-ranked within Greater Melbourne only.</p>
+    </div>
+
+    <div class="modal-foot">
+      <button class="btn" id="closeAbout2">Got it, close</button>
     </div>
   </div>
 </div>

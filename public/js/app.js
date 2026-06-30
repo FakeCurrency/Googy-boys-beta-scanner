@@ -291,7 +291,7 @@
   function refresh() {
     repaint(); updateLegend(); updateLists();
     highlightPresets(); highlightColorBy(); highlightBest();
-    updateActiveCaption(); updateMethodology();
+    updateActiveCaption();
     if (selected) renderCard(selected);
   }
 
@@ -329,37 +329,8 @@
     list.querySelectorAll("li").forEach(li => li.onclick = () => select(li.dataset.code, true));
   }
 
-  // ---- methodology (live-updating) --------------------------------------
-  const W = data.weights;
-  const WEIGHT_LABELS = {
-    person_safety: "Personal safety (low crime)", seifa: "Socio-economic advantage (SEIFA)",
-    owner_occ: "Owner-occupied housing", property_safety: "Property-crime rate",
-    family_child: "Children 0–14", child: "Children 0–14",
-    ieo: "Education &amp; occupation (SEIFA IEO)", detached_share: "Detached-housing headroom",
-    growth: "Recent price growth (3-yr)", infra: "Electricity-grid support",
-    rental_share: "Rental turnover", low_density: "Lower current density",
-  };
-  const wl = obj => Object.entries(obj).map(([k, v]) =>
-    `<li><span class="wk">${WEIGHT_LABELS[k] || k.replace(/_/g, " ")}</span><span class="wv">${Math.round(v * 100)}%</span></li>`).join("");
-  function updateMethodology() {
-    const wd = 100 - Math.round(wLive * 100);
-    const p = PRESETS.find(x => x.key === activePreset);
-    document.getElementById("methodState").innerHTML =
-      `Now viewing <b>${MODE_LABEL[mode]} mode</b>, blending <b>${Math.round(wLive * 100)}% Liveability</b> / ${wd}% Development` +
-      (p ? ` · preset <b>${p.label}</b>.` : ` · custom blend.`);
-    const fam = mode === "live";
-    document.getElementById("liveHead").innerHTML =
-      `Liveability ${fam ? "<span class='muted'>(Family-First weighting)</span>" : "<span class='muted'>(standard weighting)</span>"}`;
-    document.getElementById("liveWeights").innerHTML = wl(fam ? W.liveability_family : W.liveability);
-    document.getElementById("liveNote").innerHTML = fam
-      ? "In Live / Family-First mode, <b>property crime is cut to 4%</b> and the <b>children 0–14 signal raised to 20%</b> — a 'raise my kids here' lens."
-      : "Personal safety (assault, robbery, sexual offences) is weighted far above property crime, which is shown separately for transparency.";
-  }
-  document.getElementById("famWeights").innerHTML = wl(W.family);
-  document.getElementById("devWeights").innerHTML = wl(W.development);
-  document.getElementById("sourceList").innerHTML = Object.values(data.sources).map(s => `<li>${s}</li>`).join("");
+  // ---- footer build line ------------------------------------------------
   document.getElementById("genline").textContent = `${data.count} suburbs · built ${data.generated}`;
-  document.getElementById("genline2").textContent = `${data.count} suburbs scored · data built ${data.generated}.`;
 
   // ---- search -----------------------------------------------------------
   const search = document.getElementById("search"), results = document.getElementById("results");
@@ -403,18 +374,21 @@
 
   // ---- guide modal (tabbed) ---------------------------------------------
   const modal = document.getElementById("aboutModal");
-  const guideTabs = document.getElementById("guideTabs");
+  const aboutTabs = [...modal.querySelectorAll(".about-tab")];
   function switchTab(name) {
-    guideTabs.querySelectorAll("button").forEach(b => b.classList.toggle("on", b.dataset.tab === name));
-    modal.querySelectorAll(".gtab").forEach(p => p.classList.toggle("hidden", p.dataset.panel !== name));
-    modal.querySelector(".modal-box").scrollTop = 0;
+    aboutTabs.forEach(b => b.classList.toggle("active", b.dataset.tab === name));
+    modal.querySelectorAll(".about-panel").forEach(p => p.classList.toggle("active", p.id === "tab-" + name));
+    const box = modal.querySelector(".modal-content"); if (box) box.scrollTop = 0;
   }
-  guideTabs.querySelectorAll("button").forEach(b => b.onclick = () => switchTab(b.dataset.tab));
-  function openGuide(tab) { updateMethodology(); if (tab) switchTab(tab); modal.classList.remove("hidden"); }
-  const closeGuide = () => modal.classList.add("hidden");
+  aboutTabs.forEach(b => b.onclick = () => switchTab(b.dataset.tab));
+  function openGuide(tab) {
+    if (tab) switchTab(tab);
+    modal.classList.remove("hidden"); modal.setAttribute("aria-hidden", "false");
+  }
+  const closeGuide = () => { modal.classList.add("hidden"); modal.setAttribute("aria-hidden", "true"); };
   document.getElementById("aboutBtn").onclick = () => openGuide();
   document.getElementById("howtoBtn").onclick = () => openGuide("start");
-  document.getElementById("aboutClose").onclick = closeGuide;
+  modal.querySelectorAll("#closeAbout, #closeAbout2").forEach(b => b.onclick = closeGuide);
   modal.onclick = e => { if (e.target === modal) closeGuide(); };
   document.addEventListener("keydown", e => { if (e.key === "Escape") closeGuide(); });
 
