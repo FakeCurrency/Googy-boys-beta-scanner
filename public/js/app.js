@@ -217,8 +217,35 @@
 
   function select(code, fly) {
     selected = code; repaint(); renderCard(code);
+    infopanel.classList.remove("peek");       // picking a suburb re-opens a pushed-down sheet
     if (fly && byCode[code]) map.fitBounds(byCode[code].getBounds(), { maxZoom: 13, padding: [40, 40] });
   }
+
+  // ---- mobile bottom sheets: drag the grab pill to push down / pull up ----
+  const infopanel = document.getElementById("infopanel");
+  function sheetDrag(el, grabEl, isDown, setDown) {
+    let y0 = 0, t0 = 0, on = false;
+    const span = () => el.getBoundingClientRect().height - 52;   // collapse leaves a 52px strip
+    grabEl.addEventListener("touchstart", e => {
+      on = true; y0 = e.touches[0].clientY; t0 = isDown() ? span() : 0; el.classList.add("dragging");
+    }, { passive: true });
+    grabEl.addEventListener("touchmove", e => {
+      if (!on) return;
+      const dy = Math.max(0, Math.min(span(), t0 + e.touches[0].clientY - y0));
+      el.style.transform = `translateY(${dy}px)`;
+    }, { passive: true });
+    grabEl.addEventListener("touchend", e => {
+      if (!on) return; on = false;
+      el.classList.remove("dragging"); el.style.transform = "";
+      const dy = e.changedTouches[0].clientY - y0;
+      setDown(Math.abs(dy) < 12 ? !isDown() : t0 + dy > span() / 2);   // small movement = tap toggle
+    });
+  }
+  sheetDrag(infopanel, document.getElementById("ipGrab"),
+    () => infopanel.classList.contains("peek"), d => infopanel.classList.toggle("peek", d));
+  const dock = document.getElementById("dock");
+  sheetDrag(dock, document.getElementById("dockGrab"),
+    () => dock.classList.contains("collapsed"), d => dock.classList.toggle("collapsed", d));
 
   // ---- modes + presets --------------------------------------------------
   function highlightModes() {

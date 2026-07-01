@@ -59,6 +59,7 @@ body{font:15px/1.45 var(--sans);color:var(--ink);background:var(--map-bg);
 .tb-btn:hover{border-color:var(--accent);color:var(--accent)}
 .tb-search{position:relative}
 .search-tog{display:none}                    /* mobile-only search toggle */
+.grab{display:none}                          /* mobile-only sheet drag handle */
 .tb-search input{width:190px;border:1px solid var(--line);background:var(--chip);color:var(--ink);
   border-radius:11px;padding:8px 12px;font-size:13px;outline:none;font-family:var(--sans)}
 .tb-search input:focus{border-color:var(--accent);width:230px}
@@ -296,11 +297,17 @@ button,.preset,.cby button,.best-btn,.about-tab{transition:transform .1s ease,ba
   #dock{left:0;right:0;bottom:0;top:auto;width:auto;max-height:80vh;z-index:560;animation:none;
     border-radius:24px 24px 0 0;padding:24px 16px 20px}
   #dock.collapsed{transform:translateY(101%);opacity:1;pointer-events:none}
-  /* scorecard + list = bottom sheet, always visible */
+  /* scorecard + list = bottom sheet; drag the handle to push it down to a peek strip */
   #infopanel{left:0;right:0;bottom:0;top:auto;width:auto;max-height:62vh;z-index:520;
-    border-radius:24px 24px 0 0;padding:24px 16px 16px}
-  #dock::before,#infopanel::before{content:"";position:absolute;top:9px;left:50%;transform:translateX(-50%);
+    border-radius:24px 24px 0 0;padding:24px 16px 16px;animation:none;
+    transition:transform .28s cubic-bezier(.4,0,.2,1)}
+  #infopanel.peek{transform:translateY(calc(100% - 52px));overflow-y:hidden}
+  /* real grab handles (the pill) — sticky so they stay put while the sheet scrolls */
+  .grab{display:block;position:sticky;top:0;z-index:6;flex:none;height:30px;
+    margin:-24px -16px -14px;cursor:grab;touch-action:none}
+  .grab::before{content:"";position:absolute;top:9px;left:50%;transform:translateX(-50%);
     width:42px;height:4px;border-radius:3px;background:var(--line)}
+  .dragging{transition:none!important}
   .legend{left:8px;right:8px;bottom:auto;top:70px;transform:none;padding:8px 13px;animation:fadeDown .5s ease}
   .legend .ramp{width:auto}
   .lg-desc{max-width:none}
