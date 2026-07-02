@@ -24,7 +24,7 @@ import re
 
 import openpyxl
 
-from ..fetch import fetch
+from ..fetch import fetch, fetch_wayback
 
 # Latest quarter's workbooks (dffh.vic.gov.au slugs redirect to the xlsx asset).
 RENTS_URL = "https://www.dffh.vic.gov.au/moving-annual-rent-suburb-september-quarter-2025-excel"
@@ -114,8 +114,17 @@ def _avg(vals):
 def get_rents(name_by_code: dict[str, str],
               lga_by_code: dict[str, str] | None = None) -> dict[str, dict]:
     """{sa2_code: {rent_weekly, rent_12m, house_rent, flat_rent, rent_quarter, rent_source}}"""
-    allp, house, flat = _load_workbook_sheets(fetch(RENTS_URL, "dffh_rents_by_suburb.xlsx"))
-    lga_allp, lga_house, lga_flat = _load_workbook_sheets(fetch(RENTS_LGA_URL, "dffh_rents_by_lga.xlsx"))
+    def _dffh(url: str, fname: str):
+        # dffh.vic.gov.au is very slow / bot-hostile from datacenter IPs — fall
+        # back to the Wayback Machine if the direct download keeps timing out.
+        try:
+            return fetch(url, fname)
+        except Exception as e:  # noqa: BLE001
+            print(f"  direct DFFH download failed ({e}); trying Wayback ...")
+            return fetch_wayback(url, fname)
+
+    allp, house, flat = _load_workbook_sheets(_dffh(RENTS_URL, "dffh_rents_by_suburb.xlsx"))
+    lga_allp, lga_house, lga_flat = _load_workbook_sheets(_dffh(RENTS_LGA_URL, "dffh_rents_by_lga.xlsx"))
 
     # locality -> group name (a locality can appear in exactly one group)
     loc2group: dict[str, str] = {}

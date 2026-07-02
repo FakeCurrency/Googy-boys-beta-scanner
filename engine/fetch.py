@@ -17,7 +17,11 @@ _HEADERS = {"User-Agent": "Mozilla/5.0 (melb-scorer data build)"}
 
 
 def fetch(url: str, filename: str | None = None, force: bool = False) -> Path:
-    """Download ``url`` into data_raw/ and return the local path (cached)."""
+    """Download ``url`` into data_raw/ and return the local path (cached).
+
+    Government hosts can be very slow from datacenter IPs (GitHub Actions), so
+    retry with a growing timeout before giving up.
+    """
     config.DATA_RAW.mkdir(parents=True, exist_ok=True)
     name = filename or url.split("/")[-1].split("?")[0]
     dest = config.DATA_RAW / name
@@ -25,16 +29,23 @@ def fetch(url: str, filename: str | None = None, force: bool = False) -> Path:
         print(f"  cached  {name} ({dest.stat().st_size/1e6:.1f} MB)")
         return dest
 
-    print(f"  downloading {name} ...", flush=True)
-    with requests.get(url, headers=_HEADERS, stream=True, timeout=120) as r:
-        r.raise_for_status()
-        tmp = dest.with_suffix(dest.suffix + ".part")
-        with open(tmp, "wb") as fh:
-            for chunk in r.iter_content(chunk_size=1 << 20):
-                fh.write(chunk)
-        tmp.replace(dest)
-    print(f"  downloaded  {name} ({dest.stat().st_size/1e6:.1f} MB)")
-    return dest
+    last_err: Exception | None = None
+    for attempt, timeout in enumerate((120, 240, 360), start=1):
+        try:
+            print(f"  downloading {name}{f' (attempt {attempt})' if attempt > 1 else ''} ...", flush=True)
+            with requests.get(url, headers=_HEADERS, stream=True, timeout=timeout) as r:
+                r.raise_for_status()
+                tmp = dest.with_suffix(dest.suffix + ".part")
+                with open(tmp, "wb") as fh:
+                    for chunk in r.iter_content(chunk_size=1 << 20):
+                        fh.write(chunk)
+                tmp.replace(dest)
+            print(f"  downloaded  {name} ({dest.stat().st_size/1e6:.1f} MB)")
+            return dest
+        except Exception as e:  # noqa: BLE001 - retry on any transport error
+            last_err = e
+            time.sleep(5 * attempt)
+    raise RuntimeError(f"Could not download {url} after 3 attempts: {last_err}")
 
 
 def fetch_wayback(url: str, filename: str, force: bool = False) -> Path:
