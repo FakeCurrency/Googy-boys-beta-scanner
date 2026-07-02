@@ -108,5 +108,5 @@ move the slider — no rebuild needed.
 
 Every push to `main` publishes `public/` to **GitHub Pages** automatically
 (`.github/workflows/pages.yml`) — the live site is at
-https://fakecurrency.github.io/Googy-boys-beta-scanner/ (the path follows the repo name if renamed).
+https://fakecurrency.github.io/melbourne-property/.
 The folder is plain static files, so it can also be hosted anywhere static.
