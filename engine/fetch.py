@@ -14,6 +14,10 @@ import requests
 from . import config
 
 _HEADERS = {"User-Agent": "Mozilla/5.0 (melb-scorer data build)"}
+# One session for all downloads: keeps WAF/anti-bot cookies between requests
+# (some gov hosts challenge the first hit and throttle cookie-less follow-ups).
+_SESSION = requests.Session()
+_SESSION.headers.update(_HEADERS)
 
 
 def fetch(url: str, filename: str | None = None, force: bool = False) -> Path:
@@ -33,7 +37,7 @@ def fetch(url: str, filename: str | None = None, force: bool = False) -> Path:
     for attempt, timeout in enumerate((120, 240, 360), start=1):
         try:
             print(f"  downloading {name}{f' (attempt {attempt})' if attempt > 1 else ''} ...", flush=True)
-            with requests.get(url, headers=_HEADERS, stream=True, timeout=timeout) as r:
+            with _SESSION.get(url, stream=True, timeout=timeout) as r:
                 r.raise_for_status()
                 tmp = dest.with_suffix(dest.suffix + ".part")
                 with open(tmp, "wb") as fh:
@@ -84,7 +88,7 @@ def fetch_wayback(url: str, filename: str, force: bool = False) -> Path:
     for cand in candidates:
         try:
             print(f"  downloading {filename} via {cand.split('/')[2]} ...")
-            r = requests.get(cand, headers=_HEADERS, timeout=120, allow_redirects=True)
+            r = _SESSION.get(cand, timeout=120, allow_redirects=True)
             r.raise_for_status()
             if r.content[:200].lstrip().lower().startswith((b"<!doctype", b"<html")):
                 raise RuntimeError("got an HTML page instead of the file (WAF/error page)")

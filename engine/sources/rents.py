@@ -124,7 +124,11 @@ def get_rents(name_by_code: dict[str, str],
             print(f"  direct DFFH download failed ({e}); trying Wayback ...")
             return fetch_wayback(url, fname)
 
-    allp, house, flat = _load_workbook_sheets(_dffh(RENTS_URL, "dffh_rents_by_suburb.xlsx"))
+    try:
+        allp, house, flat = _load_workbook_sheets(_dffh(RENTS_URL, "dffh_rents_by_suburb.xlsx"))
+    except Exception as e:  # noqa: BLE001 - the workflow's coverage guard stops a bad commit
+        print(f"  suburb rents workbook unavailable ({e}); shipping no rents this build")
+        allp, house, flat = {}, {}, {}
     # The LGA workbook only backfills the handful of growth suburbs missing from
     # the suburb list — degrade gracefully rather than failing the whole build
     # (DFFH throttles back-to-back downloads from one IP).
@@ -190,3 +194,4 @@ if __name__ == "__main__":  # pragma: no cover
         code = next((c for c, n in names.items() if n == nm), None)
         if code:
             print(f"  {nm:24} {r[code]}")
+"""

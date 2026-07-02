@@ -3,11 +3,23 @@ name: Refresh Data
 # Rebuilds public/data/*.json + *.geojson from the free government sources
 # (ABS, CSA Victoria, Valuer-General, Geoscience Australia, Vicmap Planning)
 # and commits the result to main — which triggers the Pages deploy.
-# Manual for now (Actions tab -> Refresh Data -> Run workflow); re-add a
-# monthly cron once a few runs have proven the sources reliable from runners.
+#
+# A coverage guard compares the new scores.json against the committed one and
+# refuses to commit if any data layer (rents, prices, zoning, suburb crime)
+# lost coverage — a flaky source can never degrade the live dataset.
+#
+# The optional restore_sha input skips the build and restores public/data
+# from that commit instead (escape hatch for bad data commits).
+#
+# Manual for now; re-add a monthly cron once a few runs have proven reliable.
 
 on:
   workflow_dispatch:
+    inputs:
+      restore_sha:
+        description: "Skip the build; restore public/data from this commit SHA"
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -22,16 +34,51 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
       - name: Install dependencies
+        if: inputs.restore_sha == ''
         run: pip install -r requirements.txt
 
       - name: Build dataset
+        if: inputs.restore_sha == ''
         run: python -m engine.run
+
+      - name: Guard against coverage regressions
+        if: inputs.restore_sha == ''
+        run: |
+          python - <<'PY'
+          import json, subprocess
+
+          def cov(d):
+              a = list(d["areas"].values())
+              return {
+                  "areas": len(a),
+                  "prices": sum(1 for v in a if (v.get("market") or {}).get("median_house")),
+                  "rents": sum(1 for v in a if (v.get("market") or {}).get("rent_weekly")),
+                  "zoning": sum(1 for v in a if v.get("zoning")),
+                  "crime_suburb": sum(1 for v in a if (v.get("coverage") or {}).get("crime") == "suburb"),
+              }
+
+          new = json.load(open("public/data/scores.json"))
+          old = json.loads(subprocess.check_output(
+              ["git", "show", "HEAD:public/data/scores.json"], text=True))
+          n, o = cov(new), cov(old)
+          print("coverage old -> new:", {k: f"{o[k]}->{n[k]}" for k in o})
+          bad = [k for k in o if n[k] < o[k] - max(2, round(o[k] * 0.02))]
+          if bad:
+              print(f"::warning::coverage regression in {bad} — keeping the previous data, nothing will be committed")
+              subprocess.run(["git", "checkout", "HEAD", "--", "public/data"], check=True)
+          PY
+
+      - name: Restore public/data from a previous commit
+        if: inputs.restore_sha != ''
+        run: git checkout "${{ inputs.restore_sha }}" -- public/data
 
       - name: Commit & push refreshed data
         run: |
@@ -41,7 +88,7 @@ jobs:
           if git diff --cached --quiet; then
             echo "No data changes — nothing to commit."
           else
-            git commit -m "Refresh data (automated: ABS, CSA, VG, GA, Vicmap)"
+            git commit -m "${{ inputs.restore_sha != '' && format('Restore data from {0}', inputs.restore_sha) || 'Refresh data (automated: ABS, CSA, VG, GA, Vicmap)' }}"
             git pull --rebase origin main
             git push origin main
           fi
