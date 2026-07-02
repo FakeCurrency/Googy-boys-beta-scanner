@@ -21,6 +21,7 @@ LGA" workbook (coverage flagged as "lga" for transparency).
 from __future__ import annotations
 
 import re
+import time
 
 import openpyxl
 
@@ -124,7 +125,15 @@ def get_rents(name_by_code: dict[str, str],
             return fetch_wayback(url, fname)
 
     allp, house, flat = _load_workbook_sheets(_dffh(RENTS_URL, "dffh_rents_by_suburb.xlsx"))
-    lga_allp, lga_house, lga_flat = _load_workbook_sheets(_dffh(RENTS_LGA_URL, "dffh_rents_by_lga.xlsx"))
+    # The LGA workbook only backfills the handful of growth suburbs missing from
+    # the suburb list — degrade gracefully rather than failing the whole build
+    # (DFFH throttles back-to-back downloads from one IP).
+    try:
+        time.sleep(20)
+        lga_allp, lga_house, lga_flat = _load_workbook_sheets(_dffh(RENTS_LGA_URL, "dffh_rents_by_lga.xlsx"))
+    except Exception as e:  # noqa: BLE001
+        print(f"  LGA rents workbook unavailable ({e}); using suburb-level rents only")
+        lga_allp, lga_house, lga_flat = {}, {}, {}
 
     # locality -> group name (a locality can appear in exactly one group)
     loc2group: dict[str, str] = {}
