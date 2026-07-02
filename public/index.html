@@ -3,13 +3,13 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
-<title>Liveable Melbourne — live, invest &amp; develop scores by suburb</title>
+<title>Melbourne Property — live, invest &amp; develop scores by suburb</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" />
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
       integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
-<link rel="stylesheet" href="css/app.css?v=9" />
+<link rel="stylesheet" href="css/app.css?v=10" />
 </head>
 <body>
 
@@ -20,7 +20,7 @@
 <header id="topbar" class="glass">
   <button class="tb-icon dock-tog" title="Show / hide controls"
           onclick="document.getElementById('dock').classList.toggle('collapsed')" aria-label="Toggle controls"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
-  <div class="brand"><span class="mark"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s6.5-5.8 6.5-10.5A6.5 6.5 0 1 0 5.5 10.5C5.5 15.2 12 21 12 21Z" fill="currentColor"/><circle cx="12" cy="10.2" r="2.2" fill="#fff"/></svg></span><span class="bname">Liveable&nbsp;Melbourne</span></div>
+  <div class="brand"><span class="mark"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s6.5-5.8 6.5-10.5A6.5 6.5 0 1 0 5.5 10.5C5.5 15.2 12 21 12 21Z" fill="currentColor"/><circle cx="12" cy="10.2" r="2.2" fill="#fff"/></svg></span><span class="bname">Melbourne&nbsp;Property</span></div>
 
   <div class="seg modes" id="modeSeg">
     <button data-mode="live" title="Calm palette; leans liveability toward families">Live</button>
@@ -95,7 +95,7 @@
 <div id="aboutModal" class="modal hidden" aria-hidden="true">
   <div class="modal-content about-modal glass">
     <div class="modal-head">
-      <h2>How to use Liveable Melbourne</h2>
+      <h2>How to use Melbourne Property</h2>
       <button class="close-btn" id="closeAbout" aria-label="Close">×</button>
     </div>
 
@@ -222,6 +222,6 @@
 <script>if (window.innerWidth < 900) document.getElementById('dock').classList.add('collapsed');</script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
         integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-<script src="js/app.js?v=9"></script>
+<script src="js/app.js?v=10"></script>
 </body>
 </html>

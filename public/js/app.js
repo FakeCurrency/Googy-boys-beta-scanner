@@ -1,4 +1,4 @@
-/* Liveable Melbourne — map, audience modes, one-click presets, scorecards. */
+/* Melbourne Property — map, audience modes, one-click presets, scorecards. */
 (async function () {
   const [geo, data] = await Promise.all([
     fetch("data/melbourne.geojson").then(r => r.json()),

@@ -1,4 +1,4 @@
-"""Central configuration for the Liveable Melbourne build engine.
+"""Central configuration for the Melbourne Property build engine.
 
 Tune everything here: which city, where data comes from, and how the two
 scores (Liveability + Development potential) are weighted.
@@ -109,7 +109,7 @@ PRESETS = [
      "blurb": "Surfaces redevelopment headroom and the growth corridors."},
 ]
 
-# Letter grades from a 0-100 score (familiar from the stock scanner).
+# Letter grades from a 0-100 score.
 GRADE_CUTOFFS = [("A+", 85), ("A", 72), ("B", 58), ("C", 42), ("D", 0)]
 
 

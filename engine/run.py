@@ -5,7 +5,7 @@ from . import build, geo
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description="Build the Liveable Melbourne dataset.")
+    ap = argparse.ArgumentParser(description="Build the Melbourne Property dataset.")
     ap.add_argument("--geo-only", action="store_true", help="rebuild only the boundary GeoJSON")
     ap.add_argument("--force", action="store_true", help="re-download cached source files")
     args = ap.parse_args()

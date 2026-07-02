@@ -1,4 +1,4 @@
-# Liveable Melbourne — live, invest & develop scores by suburb
+# Melbourne Property — live, invest & develop scores by suburb
 
 One app that helps with three Melbourne decisions — *where's safer to live/rent*, *where an
 investment stacks up*, and *where there's room to add value/develop* — by ranking every **Greater
@@ -18,7 +18,7 @@ the browser. Light/dark mode included.
 
 > General information only — not financial or planning advice.
 
-## How it's built (same shape as the stock scanner)
+## How it's built
 
 A small **Python engine** downloads free government data, joins it on the ABS **SA2** suburb code,
 scores it, and writes JSON + GeoJSON into `public/`. The site is a static **Leaflet** map — no API
@@ -43,7 +43,7 @@ melb-scorer/
 
 ## Run it
 
-Double-click **`Start Liveable Melbourne.bat`** (serves the site at http://localhost:8766) and
+Double-click **`Start Melbourne Property.bat`** (serves the site at http://localhost:8766) and
 **`Refresh Data.bat`** to rebuild. Or from a terminal:
 
 ```bash
@@ -106,5 +106,7 @@ move the slider — no rebuild needed.
 
 ## Deploy
 
-`firebase.json` serves `public/`. `firebase deploy` (after `firebase init hosting`), or host the
-`public/` folder anywhere static.
+Every push to `main` publishes `public/` to **GitHub Pages** automatically
+(`.github/workflows/pages.yml`) — the live site is at
+https://fakecurrency.github.io/Googy-boys-beta-scanner/ (the path follows the repo name if renamed).
+The folder is plain static files, so it can also be hosted anywhere static.
