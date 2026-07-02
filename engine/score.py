@@ -1,16 +1,16 @@
 """Turn raw per-SA2 inputs into Liveability + Development scores.
 
 Every input is converted to a 0-100 percentile *within Greater Melbourne*
-(higher = always better; "bad" inputs like crime, social housing and density are
-inverted), then blended with the weights in config.py.
+(higher = always better; "bad" inputs like crime, density and heritage
+coverage are inverted), then blended with the weights in config.py.
 
-Key v1 refinements:
-  * Personal safety (crimes against the person) is weighted far above property
-    crime in Liveability.
-  * A Family Suitability sub-score (child share + education/occupation + safety)
-    is surfaced as a badge and lightly folded into Liveability.
-  * Development potential is PRELIMINARY: redevelopment headroom (detached stock),
-    renter turnover and low current density.
+Phase 4 refinements:
+  * Crime is suburb-level (CSA incidents by suburb/town) with LGA fallback.
+  * Real planning controls: Vicmap zone shares + Heritage Overlay coverage.
+  * Train-station access feeds Liveability AND Development (activity centres).
+  * School access feeds Liveability + the Family badge.
+  * Rental medians (DFFH) give gross yield into the Invest/Development lens.
+  * Per-area coverage flags so the UI can say when a figure is LGA-level or missing.
 """
 from __future__ import annotations
 
@@ -48,11 +48,7 @@ def _safest_pct(score: float) -> int:
     return max(0, min(100, round(100 - score)))
 
 
-def _top_pct(score: float) -> int:
-    return max(0, min(100, round(100 - score)))
-
-
-def _explain_live(p: dict, family: float) -> str:
+def _explain_live(p: dict, family: float, transit: dict) -> str:
     s = p["person_safety"]["score"]
     safety = (f"among the safest {_safest_pct(s)}% of Greater Melbourne for crimes against the person"
               if s >= 78 else
@@ -63,24 +59,41 @@ def _explain_live(p: dict, family: float) -> str:
     seifa = ("a high socio-economic profile (SEIFA decile " + str(dec) + ")" if dec >= 8 else
              "a below-average socio-economic profile (SEIFA decile " + str(dec) + ")" if dec <= 3 else
              "a mid-range socio-economic profile (SEIFA decile " + str(dec) + ")")
-    # Surface the person-vs-property contrast where property crime is the real driver.
     prop = (" Property crime runs higher here, typically retail/transport precincts rather than homes."
             if p["property_safety"]["score"] < 35 else "")
+    km, st = transit.get("nearest_station_km"), transit.get("nearest_station")
+    train = (f" {st} station is ~{km} km away." if km is not None and km <= 2.5 and st else
+             f" Note: the nearest train station ({st}) is ~{km} km away." if km is not None and km > 6 and st
+             else "")
     fam = " It also reads as family-friendly." if family >= 70 else ""
-    safety = safety[0].upper() + safety[1:]   # capitalise first letter only (keep "Melbourne")
-    return f"{safety}, with {seifa}.{prop}{fam}"
+    safety = safety[0].upper() + safety[1:]
+    return f"{safety}, with {seifa}.{prop}{train}{fam}"
 
 
-def _explain_dev(p: dict) -> str:
+def _explain_dev(p: dict, z: dict | None, transit: dict) -> str:
     det = p["detached"]["raw"] or 0
     head = (f"~{round(det * 100)}% of dwellings are detached houses — strong redevelopment headroom"
             if det >= 0.7 else
             f"only ~{round(det * 100)}% detached houses, so it's already fairly built-up" if det < 0.35 else
             f"~{round(det * 100)}% detached houses — moderate headroom")
-    turn = ("high renter turnover signalling investor activity" if (p["rental"]["raw"] or 0) >= 0.45
-            else "a settled owner-occupier base")
-    return (f"Preliminary: {head}, with {turn}. Still missing: planning zoning/overlays, "
-            "land values and electricity capacity (Phase 2).")
+    if z:
+        gz, rz, hz = round(z["growth_share"] * 100), round(z["restrict_share"] * 100), round(z["heritage_share"] * 100)
+        top = (z.get("zone_mix") or [["?", 0]])[0][0]
+        if gz >= 20:
+            zline = f" {gz}% of sampled land is zoned for intensification (RGZ/MUZ/ACZ/commercial)"
+        elif rz >= 45:
+            zline = f" {rz}% of land sits under protective zoning ({top}-led), which caps redevelopment"
+        else:
+            zline = f" Zoning is {top}-led"
+        if hz >= 8:
+            zline += f", and {hz}% is under a Heritage Overlay"
+        zline += "."
+    else:
+        zline = " No zoning sample for this area."
+    km, st = transit.get("nearest_station_km"), transit.get("nearest_station")
+    train = (f" Walkable to {st} station — the state's activity-centre program favours exactly this."
+             if km is not None and km <= 1.2 and st else "")
+    return f"{head}.{zline}{train} Grid capacity remains a proxy (see Infrastructure)."
 
 
 def _growth_signal(cagr: float | None) -> str:
@@ -93,6 +106,12 @@ def _value_signal(price_pctile: float | None, has_price: bool) -> str | None:
     if not has_price:
         return None
     return "Affordable" if price_pctile <= 33 else "Premium" if price_pctile >= 75 else "Mid-market"
+
+
+def _yield_signal(y: float | None) -> str | None:
+    if y is None:
+        return None
+    return "Strong yield" if y >= 4.2 else "Fair yield" if y >= 3.2 else "Thin yield"
 
 
 def _money(v: float) -> str:
@@ -109,7 +128,9 @@ def _explain_invest(m: dict) -> str:
               "Soft": "soft/flat recent growth", "n/a": "limited growth history"}[m["growth_signal"]]
     val = {"Affordable": " An affordable entry point.", "Mid-market": " Mid-market pricing.",
            "Premium": " A premium, blue-chip market."}.get(m["value_signal"], "")
-    return (f"Median house {_money(m['median_house'])} ({m['house_year']}): {g12s}, {cagrs} — {growth}.{val}")
+    yld = (f" Rents ~${round(m['rent_weekly'])}/wk → gross house yield ≈{m['yield_house']}%."
+           if m.get("yield_house") and m.get("rent_weekly") else "")
+    return (f"Median house {_money(m['median_house'])} ({m['house_year']}): {g12s}, {cagrs} — {growth}.{val}{yld}")
 
 
 def _infra_signal(score: float) -> str:
@@ -133,8 +154,24 @@ def _explain_infra(inf: dict) -> str:
             "higher for larger projects until the area builds out.")
 
 
-def _tags(p: dict, family: float, seifa_dec: int, dev: float, market: dict, infra_score: float) -> list[str]:
-    """Up to 4 salient, plain-English chips (ordered by salience)."""
+def _zoning_label(z: dict | None) -> str | None:
+    if not z:
+        return None
+    mix = dict(z.get("zone_mix") or [])
+    if mix.get("UGZ", 0) >= 0.4:
+        return "Growth-area precinct"
+    if z["growth_share"] >= 0.25:
+        return "Strongly upzoned"
+    if z["growth_share"] >= 0.10:
+        return "Some upzoning"
+    if z["restrict_share"] >= 0.50:
+        return "Tightly protected"
+    return "Standard residential"
+
+
+def _tags(p: dict, family: float, seifa_dec: int, dev: float, market: dict,
+          infra_score: float, transit: dict, z: dict | None) -> list[str]:
+    """Up to 5 salient, plain-English chips (ordered by salience)."""
     t = []
     ps = p["person_safety"]["score"]
     if ps >= 85: t.append("Very safe")
@@ -142,9 +179,13 @@ def _tags(p: dict, family: float, seifa_dec: int, dev: float, market: dict, infr
     if seifa_dec >= 9 and ps >= 78: t.append("Blue-chip")
     elif seifa_dec >= 8: t.append("Affluent")
     if family >= 72: t.append("Family-friendly")
+    if z and z["growth_share"] >= 0.20: t.append("Zoned for growth")
+    if (transit.get("nearest_station_km") or 99) <= 1.2: t.append("Near train")
     if dev >= 70 and p["child"]["score"] >= 60: t.append("Growth corridor")
     if infra_score >= 72: t.append("Grid-ready")
     if p["detached"]["score"] >= 72: t.append("Redevelopment headroom")
+    if z and z["heritage_share"] >= 0.25: t.append("Heritage constrained")
+    if (market.get("yield_house") or 0) >= 4.2: t.append("Strong yield")
     if p["rental"]["score"] >= 72: t.append("High rental demand")
     if p["owner_occ"]["score"] >= 72 and p["rental"]["score"] <= 35: t.append("Tightly held")
     if p["low_density"]["score"] >= 72: t.append("Low density")
@@ -171,24 +212,41 @@ def compute_scores(records: dict[str, dict]) -> dict[str, dict]:
         "rental": _percentiles(g("rental")),
         "mortgage": _percentiles(g("mortgage")),
         "low_density": _percentiles(g("density"), invert=True),
-        "growth": _percentiles(g("house_3yr_cagr")),   # higher recent CAGR = higher
-        "price": _percentiles(g("median_house")),       # higher median = pricier
-        "trans_prox": _percentiles(g("nearest_transmission_km"), invert=True),  # closer = higher
+        "growth": _percentiles(g("house_3yr_cagr")),
+        "price": _percentiles(g("median_house")),
+        "trans_prox": _percentiles(g("nearest_transmission_km"), invert=True),
         "sub_prox": _percentiles(g("nearest_substation_km"), invert=True),
-        "sub_dens": _percentiles(g("substation_count_10km")),                   # more = higher
+        "sub_dens": _percentiles(g("substation_count_10km")),
+        # Phase 4
+        "station_prox": _percentiles(g("nearest_station_km"), invert=True),
+        "station_dens": _percentiles(g("stations_3km")),
+        "school_prim": _percentiles(g("nearest_primary_km"), invert=True),
+        "school_sec": _percentiles(g("nearest_secondary_km"), invert=True),
+        "school_dens": _percentiles(g("schools_3km")),
+        "zoning": _percentiles(g("zoning_raw")),
+        "heritage_free": _percentiles(g("heritage_share"), invert=True),
+        "yield": _percentiles(g("yield_house")),
     }
 
     out: dict[str, dict] = {}
     for c in codes:
         r = records[c]
+        schools_score = _weighted({
+            "primary": n["school_prim"][c], "secondary": n["school_sec"][c],
+            "density": n["school_dens"][c],
+        }, config.SCHOOL_WEIGHTS)
+        # station access: proximity leads, density adds inner-network depth
+        transport_score = round(0.75 * n["station_prox"][c] + 0.25 * n["station_dens"][c], 1)
         family = _weighted(
-            {"child": n["child"][c], "ieo": n["ieo"][c], "person_safety": n["person_safety"][c]},
+            {"child": n["child"][c], "ieo": n["ieo"][c],
+             "person_safety": n["person_safety"][c], "schools": schools_score},
             config.FAMILY_WEIGHTS)
         # Shared pillar inputs; two Liveability values from two weight sets.
         live_norm = {
             "person_safety": n["person_safety"][c], "seifa": n["seifa"][c],
             "owner_occ": n["owner_occ"][c], "property_safety": n["property_safety"][c],
-            "family_child": n["child"][c],
+            "family_child": n["child"][c], "transport": transport_score,
+            "schools": schools_score,
         }
         live = _weighted(live_norm, config.LIVE_WEIGHTS)               # base (Balanced/Invest)
         live_family = _weighted(live_norm, config.LIVE_WEIGHTS_FAMILY)  # Live / Family-First
@@ -197,9 +255,11 @@ def compute_scores(records: dict[str, dict]) -> dict[str, dict]:
             "density": n["sub_dens"][c],
         }, config.INFRA_WEIGHTS)
         dev = _weighted({
-            "detached_share": n["detached"][c], "growth": n["growth"][c],
-            "infra": infra_score, "rental_share": n["rental"][c],
-            "low_density": n["low_density"][c],
+            "detached_share": n["detached"][c], "zoning": n["zoning"][c],
+            "growth": n["growth"][c], "infra": infra_score,
+            "station": n["station_prox"][c], "yield": n["yield"][c],
+            "rental_share": n["rental"][c], "low_density": n["low_density"][c],
+            "heritage_free": n["heritage_free"][c],
         }, config.DEV_WEIGHTS)
         overall = round(config.DEFAULT_BLEND["live"] * live + config.DEFAULT_BLEND["dev"] * dev, 1)
 
@@ -215,6 +275,11 @@ def compute_scores(records: dict[str, dict]) -> dict[str, dict]:
             "rental": {"score": n["rental"][c], "raw": r.get("rental")},
             "mortgage": {"score": n["mortgage"][c], "raw": r.get("mortgage")},
             "low_density": {"score": n["low_density"][c], "raw": r.get("density")},
+            "transport": {"score": transport_score, "raw": r.get("nearest_station_km")},
+            "schools": {"score": schools_score, "raw": r.get("nearest_primary_km")},
+            "zoning": {"score": n["zoning"][c], "raw": r.get("zoning_raw")},
+            "heritage_free": {"score": n["heritage_free"][c], "raw": r.get("heritage_share")},
+            "yield": {"score": n["yield"][c], "raw": r.get("yield_house")},
         }
         seifa_dec = r.get("irsad_decile") or 0
         fam_label = ("Family-friendly" if family >= 72 else
@@ -223,9 +288,14 @@ def compute_scores(records: dict[str, dict]) -> dict[str, dict]:
             "median_house": r.get("median_house"), "median_unit": r.get("median_unit"),
             "house_12m": r.get("house_12m"), "house_3yr_cagr": r.get("house_3yr_cagr"),
             "house_year": r.get("house_year"), "unit_year": r.get("unit_year"),
+            "house_series": r.get("house_series") or [],
             "growth_score": n["growth"][c],
             "growth_signal": _growth_signal(r.get("house_3yr_cagr")),
             "value_signal": _value_signal(n["price"][c], bool(r.get("median_house"))),
+            "rent_weekly": r.get("rent_weekly"), "rent_12m": r.get("rent_12m"),
+            "rent_quarter": r.get("rent_quarter"),
+            "yield_house": r.get("yield_house"), "yield_unit": r.get("yield_unit"),
+            "yield_signal": _yield_signal(r.get("yield_house")),
         }
         infra = {
             "score": infra_score,
@@ -235,6 +305,37 @@ def compute_scores(records: dict[str, dict]) -> dict[str, dict]:
             "substation_count_10km": r.get("substation_count_10km"),
             "nearest_line_kv": r.get("nearest_line_kv"),
         }
+        transit = {
+            "score": transport_score,
+            "nearest_station_km": r.get("nearest_station_km"),
+            "nearest_station": r.get("nearest_station"),
+            "stations_3km": r.get("stations_3km"),
+            "station_pax": r.get("station_pax"),
+        }
+        school = {
+            "score": schools_score,
+            "nearest_primary_km": r.get("nearest_primary_km"),
+            "nearest_secondary_km": r.get("nearest_secondary_km"),
+            "schools_3km": r.get("schools_3km"),
+        }
+        zraw = ({"growth_share": r.get("growth_share") or 0, "restrict_share": r.get("restrict_share") or 0,
+                 "heritage_share": r.get("heritage_share") or 0, "zone_mix": r.get("zone_mix") or []}
+                if r.get("zoning_raw") is not None else None)
+        zoning = None
+        if zraw is not None:
+            zoning = {
+                "score": n["zoning"][c],
+                "growth_share": r.get("growth_share"), "standard_share": r.get("standard_share"),
+                "restrict_share": r.get("restrict_share"), "heritage_share": r.get("heritage_share"),
+                "zone_mix": r.get("zone_mix") or [],
+                "label": _zoning_label(zraw),
+            }
+        coverage = {
+            "price": bool(r.get("median_house")),
+            "rent": r.get("rent_source"),                # "suburb" | "lga" | None
+            "crime": r.get("crime_source") or "lga",     # "suburb" | "lga"
+            "zoning": r.get("zoning_raw") is not None,
+        }
         out[c] = {
             "name": r.get("name"), "sa3": r.get("sa3"), "sa4": r.get("sa4"),
             "lga": r.get("lga"), "population": r.get("population"),
@@ -243,11 +344,15 @@ def compute_scores(records: dict[str, dict]) -> dict[str, dict]:
             "family": {"score": family, "label": fam_label},
             "market": market,
             "infra": infra,
+            "transit": transit,
+            "schools": school,
+            "zoning": zoning,
+            "coverage": coverage,
             "pillars": pillars,
-            "explanation_live": _explain_live(pillars, family),
-            "explanation_dev": _explain_dev(pillars),
+            "explanation_live": _explain_live(pillars, family, transit),
+            "explanation_dev": _explain_dev(pillars, zraw, transit),
             "explanation_invest": _explain_invest(market),
             "explanation_infra": _explain_infra(infra),
-            "tags": _tags(pillars, family, seifa_dec, dev, market, infra_score),
+            "tags": _tags(pillars, family, seifa_dec, dev, market, infra_score, transit, zraw),
         }
     return out

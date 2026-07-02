@@ -11,9 +11,11 @@ Price varies far less within a suburb than crime does within an LGA, so a
 suburb median applied to its child SA2s is a sound approximation.
 
 land.vic.gov.au is behind a bot WAF, so the files are pulled via the Wayback
-Machine (see engine/fetch.fetch_wayback). Houses use the 2014-2024 series;
-units use the 2013-2023 series (the 2014-2024 unit file isn't archived) — a
-slightly older vintage for the secondary unit figure, flagged in the UI.
+Machine (see engine/fetch.fetch_wayback). Both houses and units now use the
+2014-2024 series (the 2014-2024 unit file was archived Nov 2025).
+
+Also exports the full yearly house-median series per SA2 for the scorecard
+sparkline.
 """
 from __future__ import annotations
 
@@ -24,7 +26,7 @@ import openpyxl
 from ..fetch import fetch_wayback
 
 HOUSES_URL = "https://www.land.vic.gov.au/__data/assets/excel_doc/0032/756581/houses-by-suburb-2014-2024.xlsx"
-UNITS_URL = "https://www.land.vic.gov.au/__data/assets/excel_doc/0031/709753/Units-by-suburb-2013-2023.xlsx"
+UNITS_URL = "https://www.land.vic.gov.au/__data/assets/excel_doc/0033/756582/units-by-suburb-2014-2024.xlsx"
 
 
 def _num(v):
@@ -115,6 +117,13 @@ def get_prices(name_by_code: dict[str, str]) -> dict[str, dict]:
         h = [hm[c] for c in cands if c in hm and hm[c]]
         u = [um[c] for c in cands if c in um and um[c]]
         matched = [c for c in cands if c in hm]
+        # yearly house-median series (averaged across matched localities) for sparklines
+        series = {}
+        for c in matched:
+            for y, v in houses[c].items():
+                if v:
+                    series.setdefault(y, []).append(v)
+        house_series = [[y, round(sum(vs) / len(vs))] for y, vs in sorted(series.items())]
         out[code] = {
             "median_house": _avg([m["median"] for m in h]),
             "house_12m": _avg([m["m12"] for m in h]),
@@ -122,6 +131,7 @@ def get_prices(name_by_code: dict[str, str]) -> dict[str, dict]:
             "house_year": max((m["year"] for m in h), default=None),
             "median_unit": _avg([m["median"] for m in u]),
             "unit_year": max((m["year"] for m in u), default=None),
+            "house_series": house_series,
             "matched": matched,
         }
     cov = sum(1 for v in out.values() if v["median_house"])

@@ -118,6 +118,11 @@
     "Grid support": "How well the nearby electricity network can support larger development.",
     "Rental turnover": "Share of rented dwellings — investor / tenant activity.",
     "Low density": "People per km² (inverted, so fewer people = more headroom).",
+    "Train access": "Distance to the nearest metro/V-Line station, plus how many are within 3 km.",
+    "School access": "Distance to the nearest primary and secondary schools, plus choice within 3 km.",
+    "Zoning upside": "Share of land zoned for intensification (RGZ, MUZ, ACZ, HCTZ, commercial) vs protective zoning — from Vicmap Planning.",
+    "Rental yield": "Gross yield: 3-bed-house annual rent ÷ median house price.",
+    "Heritage freedom": "Inverse of Heritage Overlay coverage — heritage controls constrain redevelopment.",
   };
   const bar = (label, score, valText, sub) =>
     `<div class="pill${sub ? " sub" : ""}" title="${PILL_TIPS[label] || ""}"><span class="pl">${label}</span>
@@ -138,29 +143,90 @@
   }
 
   const money = v => v == null ? "—" : v >= 1e6 ? `$${(v / 1e6).toFixed(2)}M` : `$${Math.round(v / 1e3)}k`;
+
+  // tiny inline price-history sparkline (VG yearly medians)
+  function spark(series) {
+    if (!series || series.length < 4) return "";
+    const w = 110, h = 30, xs = series.map(p => p[0]), ys = series.map(p => p[1]);
+    const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+    const pts = series.map(([x, y]) =>
+      `${((x - x0) / (x1 - x0 || 1) * (w - 4) + 2).toFixed(1)},${(h - 3 - (y - y0) / (y1 - y0 || 1) * (h - 8)).toFixed(1)}`).join(" ");
+    const up = ys[ys.length - 1] >= ys[0];
+    return `<svg class="spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true"
+      title="${x0}–${x1} median house price"><polyline points="${pts}" fill="none"
+      stroke="${up ? "var(--good)" : "#ff3b30"}" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/></svg>`;
+  }
+
   function marketBlock(a, prominent) {
     const m = a.market;
     const sig = (label, cls) => `<span class="sig sig-${cls}">${label}</span>`;
+    const rentLine = m.rent_weekly ? `Rent ~$${Math.round(m.rent_weekly)}/wk${
+        m.rent_12m != null ? ` (${m.rent_12m >= 0 ? "+" : ""}${m.rent_12m}% 12m)` : ""}${
+        m.yield_house ? ` · yield ≈${m.yield_house}%` : ""}${
+        a.coverage.rent === "lga" ? ` <span class="cov" title="No suburb-level rent series for this area — figure is the ${a.lga} LGA median">LGA-level</span>` : ""}` : "";
     if (!m.median_house)
       return `<div class="market mini"><div class="market-h">Market &amp; Price</div>
-        <p class="market-note">No Valuer-General sale medians for this area.</p></div>`;
+        <p class="market-note">No Valuer-General sale medians for this area (often non-residential).</p>
+        ${rentLine ? `<div class="market-sub">${rentLine}</div>` : ""}</div>`;
     const up = (m.house_12m ?? 0) >= 0;
     return `<div class="market${prominent ? "" : " mini"}">
-      <div class="market-h">Market &amp; Price <span class="src">VG ${m.house_year}</span></div>
+      <div class="market-h">Market &amp; Price <span class="src">VG ${m.house_year} · DFFH ${m.rent_quarter || ""}</span></div>
       <div class="market-row">
         <div class="price"><span class="ml">Median house</span><span class="pv-big">${money(m.median_house)}</span></div>
+        ${spark(m.house_series)}
         <div class="growth" style="color:${up ? "var(--good)" : "#ff3b30"}">${up ? "▲" : "▼"} ${m.house_12m ?? "–"}% <small>12m</small></div>
       </div>
       <div class="market-sub">
         ${m.median_unit ? `Unit ${money(m.median_unit)} · ` : ""}3-yr ${m.house_3yr_cagr ?? "–"}%/yr
-        ${sig(m.growth_signal + " growth", m.growth_signal.toLowerCase())}${m.value_signal ? sig(m.value_signal, "val") : ""}
+        ${sig(m.growth_signal + " growth", m.growth_signal.toLowerCase())}${m.value_signal ? sig(m.value_signal, "val") : ""}${m.yield_signal ? sig(m.yield_signal, m.yield_house >= 4.2 ? "strong" : m.yield_house >= 3.2 ? "moderate" : "soft") : ""}
       </div>
+      ${rentLine ? `<div class="market-sub">${rentLine}</div>` : ""}
       ${prominent ? `<p class="market-note">${a.explanation_invest}</p>` : ""}</div>`;
   }
 
   const IC = {
     fam: '<svg class="ic ic-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3.6 19a5.4 5.4 0 0 1 10.8 0"/><path d="M16 6.6a3 3 0 0 1 0 5.8M17.4 14a5 5 0 0 1 3 4.6"/></svg>',
     bolt: '<svg class="ic ic-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" aria-hidden="true"><path d="M13 3 5 13h5l-1 8 8-11h-5z"/></svg>',
+    train: '<svg class="ic ic-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="3" width="12" height="13" rx="2.5"/><path d="M6 10h12M9.5 16 7 20M14.5 16 17 20"/><circle cx="9.5" cy="13" r=".6" fill="currentColor"/><circle cx="14.5" cy="13" r=".6" fill="currentColor"/></svg>',
+    school: '<svg class="ic ic-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 4 9 4.5-9 4.5-9-4.5z"/><path d="M6.5 10.8V16c0 1.2 2.5 2.5 5.5 2.5s5.5-1.3 5.5-2.5v-5.2"/></svg>',
+  };
+
+  function transitBlock(a, prominent) {
+    const t = a.transit, s = a.schools;
+    if (t.nearest_station_km == null && s.nearest_primary_km == null) return "";
+    const st = t.nearest_station_km != null
+      ? `${IC.train} <b>${t.nearest_station}</b> ~${t.nearest_station_km} km${t.stations_3km > 1 ? ` · ${t.stations_3km} stations &lt;3 km` : ""}`
+      : "";
+    const sch = s.nearest_primary_km != null
+      ? `${IC.school} primary ~${s.nearest_primary_km} km · secondary ~${s.nearest_secondary_km ?? "—"} km · ${s.schools_3km} schools &lt;3 km`
+      : "";
+    return `<div class="market${prominent ? "" : " mini"}">
+      <div class="market-h">Trains &amp; Schools <span class="src">DTP FY24-25 · DE 2025</span></div>
+      ${st ? `<div class="market-sub icrow">${st}</div>` : ""}
+      ${sch ? `<div class="market-sub icrow">${sch}</div>` : ""}</div>`;
+  }
+
+  function zoningBlock(a, prominent) {
+    const z = a.zoning;
+    if (!z) return `<div class="market mini"><div class="market-h">Planning &amp; Zoning</div>
+      <p class="market-note">No zoning sample for this area.</p></div>`;
+    const mix = (z.zone_mix || []).slice(0, 3).map(([c, s]) =>
+      `<span class="sig sig-val" title="${ZONE_NAMES[c] || c}">${c} ${Math.round(s * 100)}%</span>`).join("");
+    const her = z.heritage_share >= 0.03
+      ? `<span class="sig ${z.heritage_share >= 0.25 ? "sig-soft" : "sig-moderate"}">Heritage ${Math.round(z.heritage_share * 100)}%</span>` : "";
+    return `<div class="market${prominent ? "" : " mini"}">
+      <div class="market-h">Planning &amp; Zoning <span class="src">VicPlan</span></div>
+      <div class="market-sub"><span class="sig sig-${z.growth_share >= 0.2 ? "strong" : z.restrict_share >= 0.5 ? "soft" : "moderate"}">${z.label}</span>${mix}${her}</div>
+      ${prominent && z.growth_share >= 0.2 ? `<p class="market-note">${Math.round(z.growth_share * 100)}% of sampled land is zoned for intensification — a genuine planning tailwind.</p>` : ""}</div>`;
+  }
+  const ZONE_NAMES = {
+    GRZ: "General Residential", NRZ: "Neighbourhood Residential (restrictive)",
+    RGZ: "Residential Growth", MUZ: "Mixed Use", ACZ: "Activity Centre",
+    HCTZ: "Housing Choice & Transport (new activity-centre zone)", UGZ: "Urban Growth precinct",
+    LDRZ: "Low Density Residential", TZ: "Township", C1Z: "Commercial 1", CCZ: "Capital City",
+    PPRZ: "Public Park & Recreation", PUZ: "Public Use", TRZ: "Transport", SUZ: "Special Use",
+    GWZ: "Green Wedge", GWAZ: "Green Wedge A", RCZ: "Rural Conservation", FZ: "Farming",
+    PCRZ: "Public Conservation", IN1Z: "Industrial 1", IN2Z: "Industrial 2", IN3Z: "Industrial 3",
   };
   function infraBlock(a, prominent) {
     const i = a.infra, adv = i.advantage.toLowerCase();
@@ -176,6 +242,7 @@
 
   function renderCard(code) {
     const a = A[code]; if (!a) return;
+    if (compareWith && compareWith !== code) return renderCompare(code, compareWith);
     const p = a.pillars, m = a.market, lv = liveOf(a), ov = overallOf(a);
     const prominent = mode !== "live";          // price leads in Balanced/Invest, light in Live
     const chips = [`<span class="chip fam">${IC.fam} ${a.family.label} ${a.family.score}</span>`]
@@ -189,35 +256,114 @@
         <span class="grade" style="background:${gradeColor(a.grade)}">${a.grade}</span>
       </div>
       <div class="chips">${chips}</div>
-      <p class="bestfor"><b>Best for:</b> ${bestFor(a)}.</p>
+      <p class="bestfor"><b>Best for:</b> ${bestFor(a)}.
+        <button class="cmp-btn" id="cmpBtn" title="Compare this suburb side-by-side with another">⇆ Compare</button></p>
+      ${comparePicking ? `<p class="cmp-hint">Now tap a second suburb on the map, list or search…
+        <button class="cmp-x" id="cmpCancel">cancel</button></p>` : ""}
       <div class="bigrow">
         <div class="big" style="background:${rampColor(lv, "live")}"><div class="lab">${liveLab}</div><div class="num">${lv}</div></div>
         <div class="big" style="background:${rampColor(a.dev, "invest")}"><div class="lab">Development</div><div class="num">${a.dev}</div></div>
         <div class="big" style="background:${col(ov)}"><div class="lab">Overall</div><div class="num">${ov}</div></div>
       </div>
-      ${prominent ? marketBlock(a, true) + infraBlock(a, true) : ""}
+      ${prominent ? marketBlock(a, true) + zoningBlock(a, true) + transitBlock(a, false) + infraBlock(a, true) : ""}
       <div class="pgroup-h">Liveability — safety &amp; stability</div>
       ${bar("Personal safety", p.person_safety.score, p.person_safety.raw == null ? "—" : Math.round(p.person_safety.raw).toLocaleString() + "/100k")}
       ${bar("Socio-economic", p.seifa.score, "decile " + (p.seifa.decile ?? "—") + "/10")}
+      ${bar("Train access", p.transport.score, p.transport.raw == null ? "—" : p.transport.raw + " km")}
+      ${bar("School access", p.schools.score, p.schools.raw == null ? "—" : p.schools.raw + " km")}
       ${bar("Children 0–14", p.child.score, pct(p.child.raw))}
       ${bar("Owner-occupied", p.owner_occ.score, pct(p.owner_occ.raw))}
       ${bar("Property safety", p.property_safety.score, p.property_safety.raw == null ? "—" : Math.round(p.property_safety.raw).toLocaleString() + "/100k", true)}
       ${bar("Low social housing", p.low_social.score, pct(p.low_social.raw) + " social", true)}
-      <div class="pgroup-h">Development potential <span class="prelim">preliminary</span></div>
+      <div class="pgroup-h">Development potential</div>
       ${bar("Detached headroom", p.detached.score, pct(p.detached.raw))}
+      ${bar("Zoning upside", p.zoning.score, a.zoning ? a.zoning.label : "n/a")}
       ${bar("Recent growth", m.growth_score, m.house_3yr_cagr == null ? "n/a" : m.house_3yr_cagr + "%/yr")}
       ${bar("Grid support", a.infra.score, a.infra.advantage)}
-      ${bar("Rental turnover", p.rental.score, pct(p.rental.raw))}
-      ${bar("Low density", p.low_density.score, p.low_density.raw == null ? "—" : Math.round(p.low_density.raw).toLocaleString() + "/km²")}
+      ${bar("Rental yield", p.yield.score, p.yield.raw == null ? "n/a" : p.yield.raw + "%")}
+      ${bar("Rental turnover", p.rental.score, pct(p.rental.raw), true)}
+      ${bar("Low density", p.low_density.score, p.low_density.raw == null ? "—" : Math.round(p.low_density.raw).toLocaleString() + "/km²", true)}
+      ${bar("Heritage freedom", p.heritage_free.score, p.heritage_free.raw == null ? "n/a" : Math.round(p.heritage_free.raw * 100) + "% HO", true)}
       <p class="summary">${a.explanation_live}</p>
       <p class="summary dev">${a.explanation_dev}</p>
-      ${prominent ? "" : marketBlock(a, false) + infraBlock(a, false)}`;
+      ${prominent ? "" : marketBlock(a, false) + zoningBlock(a, false) + transitBlock(a, false) + infraBlock(a, false)}
+      ${coverageNote(a)}`;
+    const cb = document.getElementById("cmpBtn");
+    if (cb) cb.onclick = () => { comparePicking = true; renderCard(code); };
+    const cc = document.getElementById("cmpCancel");
+    if (cc) cc.onclick = () => { comparePicking = false; renderCard(code); };
     sc.classList.remove("pop"); void sc.offsetWidth; sc.classList.add("pop");  // re-trigger fade-in
   }
 
+  // ---- compare mode -------------------------------------------------------
+  let compareWith = null, comparePicking = false;
+  function renderCompare(codeA, codeB) {
+    const a = A[codeA], b = A[codeB]; if (!a || !b) return;
+    const num = (x, y, lowerBetter) => {
+      if (x == null || y == null || x === y) return ["", ""];
+      const aWins = lowerBetter ? x < y : x > y;
+      return aWins ? ["win", ""] : ["", "win"];
+    };
+    const row = (label, va, vb, cls = ["", ""], tip = "") =>
+      `<div class="cmp-row" title="${tip}"><span class="cmp-l">${label}</span>
+        <span class="cmp-v ${cls[0]}">${va ?? "—"}</span><span class="cmp-v ${cls[1]}">${vb ?? "—"}</span></div>`;
+    const lvA = liveOf(a), lvB = liveOf(b), ovA = overallOf(a), ovB = overallOf(b);
+    const kmA = a.transit.nearest_station_km, kmB = b.transit.nearest_station_km;
+    sc.classList.remove("empty");
+    sc.innerHTML = `
+      <div class="sc-head cmp-head">
+        <div><h2 class="sc-name">Compare</h2>
+          <p class="sc-sub">${a.name} vs ${b.name}</p></div>
+        <button class="cmp-x big" id="cmpExit" title="Exit compare">×</button>
+      </div>
+      <div class="cmp-row cmp-titles"><span class="cmp-l"></span>
+        <span class="cmp-v"><b>${a.name}</b><span class="grade gmini" style="background:${gradeColor(a.grade)}">${a.grade}</span></span>
+        <span class="cmp-v"><b>${b.name}</b><span class="grade gmini" style="background:${gradeColor(b.grade)}">${b.grade}</span></span></div>
+      ${row("Liveability", lvA, lvB, num(lvA, lvB))}
+      ${row("Development", a.dev, b.dev, num(a.dev, b.dev))}
+      ${row("Overall (your blend)", ovA, ovB, num(ovA, ovB))}
+      ${row("Family suitability", a.family.score, b.family.score, num(a.family.score, b.family.score))}
+      ${row("Personal safety", a.pillars.person_safety.score, b.pillars.person_safety.score,
+            num(a.pillars.person_safety.score, b.pillars.person_safety.score), "percentile — higher = safer")}
+      ${row("SEIFA decile", a.pillars.seifa.decile, b.pillars.seifa.decile, num(a.pillars.seifa.decile, b.pillars.seifa.decile))}
+      ${row("Median house", money(a.market.median_house), money(b.market.median_house))}
+      ${row("Rent / week", a.market.rent_weekly ? "$" + Math.round(a.market.rent_weekly) : null,
+            b.market.rent_weekly ? "$" + Math.round(b.market.rent_weekly) : null)}
+      ${row("Gross yield", a.market.yield_house ? a.market.yield_house + "%" : null,
+            b.market.yield_house ? b.market.yield_house + "%" : null,
+            num(a.market.yield_house, b.market.yield_house))}
+      ${row("3-yr growth", a.market.house_3yr_cagr != null ? a.market.house_3yr_cagr + "%/yr" : null,
+            b.market.house_3yr_cagr != null ? b.market.house_3yr_cagr + "%/yr" : null,
+            num(a.market.house_3yr_cagr, b.market.house_3yr_cagr))}
+      ${row("Nearest station", kmA != null ? kmA + " km" : null, kmB != null ? kmB + " km" : null, num(kmA, kmB, true))}
+      ${row("Zoning", a.zoning ? a.zoning.label : null, b.zoning ? b.zoning.label : null)}
+      ${row("Grid support", a.infra.advantage, b.infra.advantage)}
+      <p class="covnote">Green = the stronger side. Tap × to go back to the full scorecard.</p>`;
+    document.getElementById("cmpExit").onclick = () => { compareWith = null; renderCard(selected); writeHash(); };
+    sc.classList.remove("pop"); void sc.offsetWidth; sc.classList.add("pop");
+  }
+
+  function coverageNote(a) {
+    const c = a.coverage, notes = [];
+    notes.push(c.crime === "suburb" ? "crime: suburb-level" : "crime: LGA-level");
+    if (c.rent === "lga") notes.push("rent: LGA-level");
+    else if (!c.rent) notes.push("rent: no data");
+    if (!c.price) notes.push("price: no VG match");
+    if (!c.zoning) notes.push("zoning: no sample");
+    return `<p class="covnote" title="How fine-grained each source is for this exact area">Data coverage — ${notes.join(" · ")}</p>`;
+  }
+
   function select(code, fly) {
-    selected = code; repaint(); renderCard(code);
     infopanel.classList.remove("peek");       // picking a suburb re-opens a pushed-down sheet
+    if (comparePicking && selected && code !== selected) {
+      comparePicking = false; compareWith = code;
+      repaint(); renderCompare(selected, compareWith); writeHash();
+      return;
+    }
+    selected = code; repaint();
+    if (compareWith && compareWith !== code) renderCompare(code, compareWith);
+    else renderCard(code);
+    writeHash();
     if (fly && byCode[code]) map.fitBounds(byCode[code].getBounds(), { maxZoom: 13, padding: [40, 40] });
   }
 
@@ -325,6 +471,7 @@
     highlightPresets(); highlightColorBy(); highlightBest();
     updateActiveCaption();
     if (selected) renderCard(selected);
+    writeHash();
   }
 
   const BEST_LABEL = { live: "Best to live", invest: "Best to invest", develop: "Best to develop" };
@@ -371,11 +518,70 @@
   // ---- footer build line ------------------------------------------------
   document.getElementById("genline").textContent = `${data.count} suburbs · built ${data.generated}`;
 
-  // ---- search -----------------------------------------------------------
+  // ---- shareable URL state ------------------------------------------------
+  let hashReady = false;
+  function writeHash() {
+    if (!hashReady) return;
+    const p = new URLSearchParams();
+    if (selected) p.set("s", selected);
+    if (compareWith) p.set("vs", compareWith);
+    p.set("m", mode); p.set("w", Math.round(wLive * 100));
+    if (colorBy !== "overall") p.set("c", colorBy);
+    if (minScore > 0) p.set("min", Math.round(minScore));
+    history.replaceState(null, "", "#" + p.toString());
+  }
+  function readHash() {
+    const h = location.hash.replace(/^#/, "");
+    if (!h) return false;
+    const p = new URLSearchParams(h);
+    if (p.get("m") && MODE_PRESETS[p.get("m")] != null) mode = p.get("m");
+    if (p.get("w") != null && !isNaN(+p.get("w"))) wLive = Math.max(0, Math.min(100, +p.get("w"))) / 100;
+    if (p.get("c")) colorBy = p.get("c");
+    if (p.get("min") != null) minScore = Math.max(0, Math.min(90, +p.get("min") || 0));
+    if (p.get("vs") && A[p.get("vs")]) compareWith = p.get("vs");
+    return p.get("s") && A[p.get("s")] ? p.get("s") : true;
+  }
+
+  // ---- point-in-SA2 lookup (for address search) ---------------------------
+  function inRing(x, y, ring) {
+    let inside = false;
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const xi = ring[i][0], yi = ring[i][1], xj = ring[j][0], yj = ring[j][1];
+      if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) inside = !inside;
+    }
+    return inside;
+  }
+  function sa2At(lon, lat) {
+    for (const f of geo.features) {
+      const g = f.geometry, polys = g.type === "Polygon" ? [g.coordinates] : g.coordinates;
+      for (const poly of polys)
+        if (inRing(lon, lat, poly[0]) && !poly.slice(1).some(h => inRing(lon, lat, h)))
+          return f.properties.sa2_code;
+    }
+    return null;
+  }
+  let addrMarker = null;
+  async function searchAddress(q) {
+    try {
+      const url = "https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=au" +
+        "&viewbox=144.2,-37.1,145.9,-38.7&bounded=1&q=" + encodeURIComponent(q);
+      const res = await fetch(url, { headers: { "Accept-Language": "en" } }).then(r => r.json());
+      if (!res.length) { alert("Couldn't find that address inside Greater Melbourne."); return; }
+      const lat = +res[0].lat, lon = +res[0].lon;
+      const code = sa2At(lon, lat);
+      if (!code) { alert("That point is outside the Greater Melbourne study area."); return; }
+      if (addrMarker) map.removeLayer(addrMarker);
+      addrMarker = L.marker([lat, lon], { title: res[0].display_name }).addTo(map)
+        .bindPopup(res[0].display_name.split(",").slice(0, 3).join(",")).openPopup();
+      select(code, true);
+    } catch (e) { alert("Address lookup failed — try again in a moment."); }
+  }
+
+  // ---- search (suburbs + addresses) ---------------------------------------
   const search = document.getElementById("search"), results = document.getElementById("results");
   const topbar = document.getElementById("topbar");
   const closeSearch = () => { topbar.classList.remove("search-open"); results.innerHTML = ""; search.blur(); };
-  search.oninput = () => {
+  function runSearch() {
     const q = search.value.trim().toLowerCase(); results.innerHTML = "";
     if (!q) return;
     entries.filter(([, a]) => a.name.toLowerCase().includes(q)).slice(0, 8).forEach(([code, a]) => {
@@ -384,7 +590,15 @@
       d.onclick = () => { select(code, true); search.value = a.name; closeSearch(); };
       results.appendChild(d);
     });
-  };
+    if (q.length >= 6) {                       // offer address geocoding as the last row
+      const d = document.createElement("div"); d.className = "res addr";
+      d.innerHTML = `<span>Find address “${search.value.trim()}”</span><small>OSM</small>`;
+      d.onclick = () => { closeSearch(); searchAddress(search.value.trim()); };
+      results.appendChild(d);
+    }
+  }
+  search.oninput = runSearch;
+  search.onkeydown = e => { if (e.key === "Enter") { const f = results.querySelector(".res"); if (f) f.click(); } };
   // mobile: the topbar magnifier expands the search into a full-width bar
   document.getElementById("searchTog").onclick = () => {
     if (topbar.classList.toggle("search-open")) { search.value = ""; results.innerHTML = ""; search.focus(); }
@@ -409,6 +623,28 @@
   }
   document.getElementById("elecToggle").onchange = async e => {
     const lyr = await ensureElec();
+    if (e.target.checked) lyr.addTo(map); else map.removeLayer(lyr);
+  };
+
+  // ---- train stations overlay --------------------------------------------
+  let stnLayer = null;
+  async function ensureStations() {
+    if (stnLayer) return stnLayer;
+    const gj = await fetch("data/stations.geojson").then(r => r.json());
+    stnLayer = L.geoJSON(gj, {
+      pointToLayer: (f, ll) => L.circleMarker(ll, {
+        radius: f.properties.kind === "metro" ? 3.5 : 4.5,
+        color: "#fff", weight: 1.2,
+        fillColor: f.properties.kind === "metro" ? "#0a84ff" : "#af52de", fillOpacity: .95,
+      }),
+      onEachFeature: (f, l) => l.bindTooltip(
+        `${f.properties.name} station${f.properties.kind === "vline" ? " (V/Line)" : ""}` +
+        (f.properties.pax ? ` · ~${(f.properties.pax / 1e6).toFixed(1)}M entries/yr` : "")),
+    });
+    return stnLayer;
+  }
+  document.getElementById("stnToggle").onchange = async e => {
+    const lyr = await ensureStations();
     if (e.target.checked) lyr.addTo(map); else map.removeLayer(lyr);
   };
 
@@ -441,6 +677,13 @@
 
   // ---- init -------------------------------------------------------------
   setTheme(localStorage.getItem("theme") || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"));
-  setMode("balanced");
+  const fromHash = readHash();
+  if (fromHash) {                       // restore a shared view
+    setSlider(); setMinSlider(); highlightModes(); refresh();
+    if (typeof fromHash === "string") select(fromHash, true);
+  } else {
+    setMode("balanced");
+  }
+  hashReady = true; writeHash();
   if (!localStorage.getItem("seenGuide")) { openGuide("start"); localStorage.setItem("seenGuide", "1"); }
 })();

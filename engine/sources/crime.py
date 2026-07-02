@@ -1,20 +1,29 @@
 """Crime inputs per SA2, split by offence type so personal safety can be
 prioritised over property crime in the Liveability score.
 
-Source: CSA Victoria "Recorded Offences by LGA" workbook.
+Two resolutions, merged in build.py (suburb preferred, LGA fallback):
+
+LGA level — CSA "Recorded Offences by LGA" workbook:
   * Table 01 -> each LGA's total offence count + rate  => implied population
   * Table 02 -> offence counts by Offence Division per LGA
-We compute, per LGA and per 100k population:
+  attached to each SA2 by point-in-polygon against ABS LGA boundaries.
+
+Suburb level (Phase 4) — CSA "Criminal Incidents by LGA" workbook, Table 03:
+  criminal incidents by suburb/town × offence division. Suburb counts are
+  allocated to SA2s by locality-name matching (as prices.py) with the counts
+  split across matching SA2s in proportion to population, then divided by SA2
+  population for a per-100k rate. This fixes the old LGA artifact where e.g.
+  Toorak wore Stonnington-wide (Chapel St precinct) rates.
+
+Both compute, per 100k population:
   person   = Division "A Crimes against the person"
   property = Division "B Property and deception offences"
   total    = all divisions
-then attach each Greater Melbourne SA2 to the LGA that geographically contains
-its representative point (pure-Python point-in-polygon). Coarse but defensible
-for v1 — suburb-level crime is a later refinement.
 """
 from __future__ import annotations
 
 import json
+import re
 import zipfile
 from collections import defaultdict
 
@@ -28,6 +37,11 @@ from ..fetch import fetch
 CRIME_XLSX_URL = (
     "https://files.crimestatistics.vic.gov.au/2026-06/"
     "Data_Tables_LGA_Recorded_Offences_Year_Ending_March_2026.xlsx"
+)
+# CSA "Criminal incidents" workbook — Table 03 has the suburb/town breakdown.
+INCIDENTS_XLSX_URL = (
+    "https://files.crimestatistics.vic.gov.au/2026-06/"
+    "Data_Tables_LGA_Criminal_Incidents_Year_Ending_March_2026.xlsx"
 )
 LGA_SHP_URL = (
     "https://www.abs.gov.au/statistics/standards/"
@@ -155,6 +169,105 @@ def get_crime() -> dict[str, dict]:
         }
     matched = sum(1 for v in out.values() if v["person"] is not None)
     print(f"  crime: matched {matched}/{len(out)} SA2s to an LGA rate")
+    return out
+
+
+# --- suburb-level (Phase 4) -------------------------------------------------
+_COMPASS = {"EAST", "WEST", "NORTH", "SOUTH", "CENTRAL", "INNER", "OUTER"}
+
+
+def _sa2_localities(name: str) -> list[str]:
+    """Localities an SA2 name refers to (UPPERCASE), for suburb-count matching."""
+    n = re.sub(r"\(.*?\)", "", name)
+    parts = [p.strip().upper() for p in re.split(r"\s*-\s*", n) if p.strip()]
+    out = []
+    for p in parts + [re.sub(r"\s+", " ", n).strip().upper()]:
+        if p and p not in out and p not in _COMPASS:
+            out.append(p)
+        # "Melbourne CBD - East" should also match the CSA locality "Melbourne"
+        if p.endswith(" CBD") and p[:-4] not in out:
+            out.append(p[:-4])
+    return out
+
+
+def _incidents_by_suburb(metro_lgas: set[str]) -> dict[str, dict]:
+    """{SUBURB: {person, property, total}} incident counts, latest year, metro LGAs."""
+    cache = config.DATA_RAW / "crime_incidents_by_suburb.json"
+    if cache.exists() and cache.stat().st_size > 0:
+        print("  cached  crime_incidents_by_suburb.json")
+        return json.loads(cache.read_text(encoding="utf-8"))
+
+    path = fetch(INCIDENTS_XLSX_URL, "csa_lga_criminal_incidents.xlsx")
+    wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
+    ws = wb["Table 03"]
+    latest = 0
+    rows = []
+    for year, _end, lga, _pc, suburb, div, _sub, _grp, count in ws.iter_rows(min_row=2, values_only=True):
+        if year is None or suburb is None or not count:
+            continue
+        y = int(year)
+        latest = max(latest, y)
+        rows.append((y, _norm_lga(lga), str(suburb).strip().upper(), str(div), float(count)))
+    wb.close()
+
+    counts: dict[str, dict] = defaultdict(lambda: {"person": 0.0, "property": 0.0, "total": 0.0})
+    for y, lga, suburb, div, count in rows:
+        if y != latest or lga not in metro_lgas:
+            continue
+        c = counts[suburb]
+        c["total"] += count
+        if div.startswith("A "):
+            c["person"] += count
+        elif div.startswith("B "):
+            c["property"] += count
+    out = dict(counts)
+    cache.write_text(json.dumps(out), encoding="utf-8")
+    print(f"  crime: suburb incident counts for {len(out)} metro localities, year {latest}")
+    return out
+
+
+def get_crime_suburb(name_by_code: dict[str, str],
+                     pop_by_code: dict[str, float],
+                     lga_by_code: dict[str, str]) -> dict[str, dict]:
+    """{sa2_code: {person, property, total}} per-100k rates from suburb incidents.
+
+    Locality counts are split across the SA2s whose names reference the locality
+    (population-weighted), then summed per SA2 and divided by SA2 population.
+    """
+    metro_lgas = {_norm_lga(v) for v in lga_by_code.values() if v}
+    counts = _incidents_by_suburb(metro_lgas)
+
+    loc2sa2: dict[str, list[str]] = defaultdict(list)
+    for code, name in name_by_code.items():
+        if not pop_by_code.get(code):
+            continue
+        for loc in _sa2_localities(name):
+            loc2sa2[loc].append(code)
+
+    alloc: dict[str, dict] = defaultdict(lambda: {"person": 0.0, "property": 0.0, "total": 0.0})
+    for loc, c in counts.items():
+        sa2s = loc2sa2.get(loc)
+        if not sa2s:
+            continue
+        pop_sum = sum(pop_by_code[s] for s in sa2s)
+        if pop_sum <= 0:
+            continue
+        for s in sa2s:
+            w = pop_by_code[s] / pop_sum
+            a = alloc[s]
+            for k in ("person", "property", "total"):
+                a[k] += c[k] * w
+
+    out = {}
+    for code in name_by_code:
+        pop = pop_by_code.get(code)
+        a = alloc.get(code)
+        if not pop or not a or a["total"] <= 0:
+            out[code] = {}
+            continue
+        out[code] = {k: round(v / pop * 1e5, 1) for k, v in a.items()}
+    matched = sum(1 for v in out.values() if v)
+    print(f"  crime: suburb-level rates for {matched}/{len(out)} SA2s (rest fall back to LGA)")
     return out
 
 

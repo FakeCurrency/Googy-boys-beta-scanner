@@ -42,42 +42,64 @@ COORD_PRECISION = 5
 # BASE weights (used in Balanced + Invest modes, where property crime still
 # matters for resale/insurance).
 LIVE_WEIGHTS = {
-    "person_safety": 0.40,   # inverse rate of crimes AGAINST THE PERSON (assault, robbery, sexual)
-    "seifa": 0.33,           # SEIFA IRSAD advantage
-    "owner_occ": 0.12,       # owner-occupier share -> stability
-    "property_safety": 0.07, # inverse property-crime rate (secondary, transparent)
-    "family_child": 0.08,    # share of children 0-14 (family-area signal)
+    "person_safety": 0.34,   # inverse rate of crimes AGAINST THE PERSON (assault, robbery, sexual)
+    "seifa": 0.27,           # SEIFA IRSAD advantage
+    "transport": 0.10,       # train-station access (nearest station distance)
+    "owner_occ": 0.10,       # owner-occupier share -> stability
+    "schools": 0.07,         # school access (nearest primary/secondary + density)
+    "property_safety": 0.06, # inverse property-crime rate (secondary, transparent)
+    "family_child": 0.06,    # share of children 0-14 (family-area signal)
 }
 
 # FAMILY weights (used in Live / Family-First mode): for a "raise my kid here"
-# view, property crime barely matters (4%) while the family/child signal leads
+# view, property crime barely matters while family/child + schools lead
 # alongside personal safety. Computed as a second Liveability value (live_family).
 LIVE_WEIGHTS_FAMILY = {
-    "person_safety": 0.40,   # personal safety still the #1 driver
-    "family_child": 0.20,    # children 0-14 share weighted up for the family lens
-    "seifa": 0.24,           # socio-economic advantage (schools/amenity proxy)
-    "owner_occ": 0.12,       # settled owner-occupier base
-    "property_safety": 0.04, # property crime: minimal weight for a family-living view
+    "person_safety": 0.34,   # personal safety still the #1 driver
+    "seifa": 0.19,           # socio-economic advantage (amenity proxy)
+    "family_child": 0.16,    # children 0-14 share weighted up for the family lens
+    "schools": 0.12,         # actual school access matters most in this lens
+    "owner_occ": 0.09,       # settled owner-occupier base
+    "transport": 0.07,       # train access still counts for school-run/commute
+    "property_safety": 0.03, # property crime: minimal weight for a family-living view
 }
 
 # Family Suitability sub-score (a highlight/badge, lightly folded into Liveability
-# via family_child above). Blends child share, education/occupation and safety.
+# via family_child above). Blends child share, education/occupation, safety, schools.
 FAMILY_WEIGHTS = {
-    "child": 0.40,           # share of population aged 0-14
-    "ieo": 0.35,             # SEIFA Index of Education & Occupation
-    "person_safety": 0.25,   # personal-safety percentile
+    "child": 0.32,           # share of population aged 0-14
+    "ieo": 0.28,             # SEIFA Index of Education & Occupation
+    "person_safety": 0.22,   # personal-safety percentile
+    "schools": 0.18,         # school-access sub-score
 }
 
-# Development potential = physical headroom + price growth + electricity infra.
-# Phase 2 added `growth` (VG 3yr CAGR); Phase 3 adds `infra` (proximity to the
-# electricity network). Still to come: planning zoning/overlays.
-DEV_WEIGHTS = {
-    "detached_share": 0.35,  # low-density separate houses -> redevelopment headroom
-    "growth": 0.20,          # recent capital growth (VG 3yr CAGR, percentile)
-    "infra": 0.20,           # electricity-network support (see INFRA_WEIGHTS)
-    "rental_share": 0.15,    # rental share -> turnover / investor activity
-    "low_density": 0.10,     # lower current density (persons/km2) -> headroom
+# School-access sub-score (feeds Liveability + Family).
+SCHOOL_WEIGHTS = {
+    "primary": 0.45,         # closer to the nearest primary school
+    "secondary": 0.35,       # closer to the nearest secondary school
+    "density": 0.20,         # more schools within ~3 km (choice)
 }
+
+# Development potential = zoning headroom + physical headroom + price growth +
+# electricity infra + station access + rental economics. Phase 4 added real
+# planning controls (Vicmap zones + Heritage Overlay) and rental yield.
+DEV_WEIGHTS = {
+    "detached_share": 0.20,  # low-density separate houses -> redevelopment headroom
+    "zoning": 0.18,          # share of land zoned for growth (RGZ/MUZ/ACZ/C1Z/HCTZ...)
+    "growth": 0.13,          # recent capital growth (VG 3yr CAGR, percentile)
+    "infra": 0.13,           # electricity-network support (see INFRA_WEIGHTS)
+    "station": 0.10,         # train-station proximity (activity-centre uplift signal)
+    "yield": 0.08,           # gross rental yield (house rent vs house price)
+    "rental_share": 0.07,    # rental share -> turnover / investor activity
+    "low_density": 0.06,     # lower current density (persons/km2) -> headroom
+    "heritage_free": 0.05,   # less Heritage Overlay coverage -> fewer constraints
+}
+
+# Planning-zone groupings (Vicmap ZONE_CODE with trailing schedule digits
+# stripped, e.g. GRZ10 -> GRZ). zoning_raw = growth + 0.45*standard - 0.35*restrictive.
+ZONES_GROWTH = {"RGZ", "MUZ", "ACZ", "CCZ", "C1Z", "HCTZ", "CDZ", "B1Z", "B2Z", "B4Z", "PDZ"}
+ZONES_STANDARD = {"GRZ", "R1Z", "R2Z", "R3Z", "TZ", "UGZ"}      # UGZ = growth-area precincts
+ZONES_RESTRICT = {"NRZ", "LDRZ", "GWZ", "GWAZ", "RCZ", "FZ", "RLZ", "PCRZ"}
 
 # Electricity-infrastructure sub-score (Phase 3). Transmission proximity leads:
 # it enables larger-scale connection and isn't penalised for new growth areas
