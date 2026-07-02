@@ -42,25 +42,27 @@ COORD_PRECISION = 5
 # BASE weights (used in Balanced + Invest modes, where property crime still
 # matters for resale/insurance).
 LIVE_WEIGHTS = {
-    "person_safety": 0.34,   # inverse rate of crimes AGAINST THE PERSON (assault, robbery, sexual)
-    "seifa": 0.27,           # SEIFA IRSAD advantage
+    "person_safety": 0.33,   # inverse rate of crimes AGAINST THE PERSON (assault, robbery, sexual)
+    "seifa": 0.25,           # SEIFA IRSAD advantage
     "transport": 0.10,       # train-station access (nearest station distance)
-    "owner_occ": 0.10,       # owner-occupier share -> stability
+    "owner_occ": 0.09,       # owner-occupier share -> stability
     "schools": 0.07,         # school access (nearest primary/secondary + density)
     "property_safety": 0.06, # inverse property-crime rate (secondary, transparent)
-    "family_child": 0.06,    # share of children 0-14 (family-area signal)
+    "family_child": 0.05,    # share of children 0-14 (family-area signal)
+    "hazard_free": 0.05,     # less flood (LSIO/SBO/FO) + bushfire (BMO) overlay coverage
 }
 
 # FAMILY weights (used in Live / Family-First mode): for a "raise my kid here"
 # view, property crime barely matters while family/child + schools lead
 # alongside personal safety. Computed as a second Liveability value (live_family).
 LIVE_WEIGHTS_FAMILY = {
-    "person_safety": 0.34,   # personal safety still the #1 driver
-    "seifa": 0.19,           # socio-economic advantage (amenity proxy)
-    "family_child": 0.16,    # children 0-14 share weighted up for the family lens
+    "person_safety": 0.33,   # personal safety still the #1 driver
+    "seifa": 0.18,           # socio-economic advantage (amenity proxy)
+    "family_child": 0.15,    # children 0-14 share weighted up for the family lens
     "schools": 0.12,         # actual school access matters most in this lens
-    "owner_occ": 0.09,       # settled owner-occupier base
+    "owner_occ": 0.08,       # settled owner-occupier base
     "transport": 0.07,       # train access still counts for school-run/commute
+    "hazard_free": 0.04,     # flood/bushfire overlays matter for a family home
     "property_safety": 0.03, # property crime: minimal weight for a family-living view
 }
 
@@ -84,15 +86,39 @@ SCHOOL_WEIGHTS = {
 # electricity infra + station access + rental economics. Phase 4 added real
 # planning controls (Vicmap zones + Heritage Overlay) and rental yield.
 DEV_WEIGHTS = {
-    "detached_share": 0.20,  # low-density separate houses -> redevelopment headroom
-    "zoning": 0.18,          # share of land zoned for growth (RGZ/MUZ/ACZ/C1Z/HCTZ...)
-    "growth": 0.13,          # recent capital growth (VG 3yr CAGR, percentile)
-    "infra": 0.13,           # electricity-network support (see INFRA_WEIGHTS)
+    "detached_share": 0.19,  # low-density separate houses -> redevelopment headroom
+    "zoning": 0.17,          # share of land zoned for growth (RGZ/MUZ/ACZ/C1Z/HCTZ...)
+    "growth": 0.12,          # recent capital growth (VG 3yr CAGR, percentile)
+    "infra": 0.12,           # electricity-network support (see INFRA_WEIGHTS)
     "station": 0.10,         # train-station proximity (activity-centre uplift signal)
-    "yield": 0.08,           # gross rental yield (house rent vs house price)
+    "yield": 0.08,           # gross rental yield (unit yield where units dominate)
     "rental_share": 0.07,    # rental share -> turnover / investor activity
-    "low_density": 0.06,     # lower current density (persons/km2) -> headroom
+    "low_density": 0.05,     # lower current density (persons/km2) -> headroom
     "heritage_free": 0.05,   # less Heritage Overlay coverage -> fewer constraints
+    "hazard_free": 0.05,     # less flood/bushfire overlay -> fewer approval/insurance drags
+}
+
+# Two development sub-lenses (both percentile-stretched like the headline Dev):
+# Greenfield = the land-supply corridor story; Infill = established-area uplift
+# (upzoning + station-centred activity-centre policy). Surfaced as their own
+# colour-by lenses so the HCTZ/upzoning story isn't buried by UGZ corridors.
+DEV_GREENFIELD_WEIGHTS = {
+    "ugz": 0.32,             # Urban Growth Zone share — literal greenfield precincts
+    "unrestricted": 0.14,    # NOT green wedge/farming/conservation (that land can't be developed)
+    "low_density": 0.14,     # land headroom
+    "growth": 0.12,          # corridor price momentum
+    "detached_share": 0.10,  # house-and-land stock
+    "yield": 0.10,           # investor economics
+    "infra": 0.08,           # grid support for estate-scale build-out
+}
+DEV_INFILL_WEIGHTS = {
+    "upzone": 0.30,          # upzoned share ONLY (RGZ/MUZ/ACZ/HCTZ/commercial — not UGZ)
+    "station": 0.20,         # walkable to a station (activity-centre policy)
+    "detached_share": 0.15,  # knockdown-rebuild stock within the upzoned fabric
+    "heritage_free": 0.10,   # heritage controls kill infill feasibility
+    "growth": 0.10,          # market momentum
+    "rental_share": 0.10,    # renter demand for the built product
+    "hazard_free": 0.05,     # flood/bushfire overlays complicate approvals
 }
 
 # Planning-zone groupings (Vicmap ZONE_CODE with trailing schedule digits

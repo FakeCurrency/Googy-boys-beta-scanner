@@ -55,8 +55,21 @@ def _read_stations(path, kind):
     return rows
 
 
-def get_stations(points: dict[str, tuple[float, float]]) -> dict[str, dict]:
-    """{sa2_code: {nearest_station_km, nearest_station, stations_3km, station_pax}}"""
+def _subsample(pts: list, cap: int) -> list:
+    if len(pts) <= cap:
+        return pts
+    step = len(pts) / cap
+    return [pts[int(i * step)] for i in range(cap)]
+
+
+def get_stations(points: dict[str, tuple[float, float]],
+                 res_points: dict[str, list] | None = None) -> dict[str, dict]:
+    """{sa2_code: {nearest_station_km, nearest_station, stations_3km, station_pax}}
+
+    Distances are the *median* over residentially-zoned sample points (from the
+    VicPlan sampler) so large fringe SA2s are measured from where people live,
+    not the geometric centroid. Falls back to the representative point.
+    """
     raw = (_read_stations(fetch(METRO_URL, "stations_metro.csv"), "metro")
            + _read_stations(fetch(REGIONAL_URL, "stations_regional.csv"), "vline"))
     x0, y0, x1, y1 = ENVELOPE
@@ -77,22 +90,33 @@ def get_stations(points: dict[str, tuple[float, float]]) -> dict[str, dict]:
 
     near2 = NEAR_KM ** 2
     out = {}
+    res_used = 0
     for code, (lon, lat) in points.items():
-        px, py = _to_km(lon, lat)
+        rp = _subsample((res_points or {}).get(code) or [], 48)
+        if rp:
+            res_used += 1
+        sample = [_to_km(px, py) for px, py in rp] or [_to_km(lon, lat)]
+        # residential centroid anchors "nearest station" name + the 3 km count
+        cx = sum(x for x, _ in sample) / len(sample)
+        cy = sum(y for _, y in sample) / len(sample)
         best2, best, count = float("inf"), None, 0
         for sx, sy, s in stations:
-            d2 = (px - sx) ** 2 + (py - sy) ** 2
+            d2 = (cx - sx) ** 2 + (cy - sy) ** 2
             if d2 < best2:
                 best2, best = d2, s
             if d2 <= near2:
                 count += 1
+        dists = sorted(min((px - sx) ** 2 + (py - sy) ** 2 for sx, sy, _ in stations)
+                       for px, py in sample)
+        median2 = dists[len(dists) // 2]
         out[code] = {
-            "nearest_station_km": round(best2 ** 0.5, 2) if best else None,
+            "nearest_station_km": round(median2 ** 0.5, 2) if best else None,
             "nearest_station": best["name"] if best else None,
             "stations_3km": count,
             "station_pax": best["pax"] if best else None,
         }
-    print(f"  transport: {len(stations)} stations (metro + V/Line) -> access for {len(out)} SA2s")
+    print(f"  transport: {len(stations)} stations -> access for {len(out)} SA2s "
+          f"({res_used} measured from residential land)")
     return out
 
 

@@ -102,6 +102,12 @@ def _explain_dev(p: dict, z: dict | None, transit: dict) -> str:
         if hz >= 8:
             zline += f", and {hz}% is under a Heritage Overlay"
         zline += "."
+        fz, bz = round(z.get("flood_share", 0) * 100), round(z.get("bushfire_share", 0) * 100)
+        risks = [f"{fz}% flood (LSIO/SBO/FO)" if fz >= 5 else "",
+                 f"{bz}% bushfire (BMO)" if bz >= 5 else ""]
+        risks = [x for x in risks if x]
+        if risks:
+            zline += f" Hazard overlays cover {' and '.join(risks)} — factor approvals and insurance."
     else:
         zline = " No zoning sample for this area."
     km, st = transit.get("nearest_station_km"), transit.get("nearest_station")
@@ -142,8 +148,13 @@ def _explain_invest(m: dict) -> str:
               "Soft": "soft/flat recent growth", "n/a": "limited growth history"}[m["growth_signal"]]
     val = {"Affordable": " An affordable entry point.", "Mid-market": " Mid-market pricing.",
            "Premium": " A premium, blue-chip market."}.get(m["value_signal"], "")
-    yld = (f" Rents ~${round(m['rent_weekly'])}/wk → gross house yield ≈{m['yield_house']}%."
-           if m.get("yield_house") and m.get("rent_weekly") else "")
+    basis = m.get("yield_basis") or "house"
+    yv = m.get("yield_headline")
+    yld = ""
+    if yv and m.get("rent_weekly"):
+        yld = f" Rents ~${round(m['rent_weekly'])}/wk → gross {basis} yield ≈{yv}%."
+        if basis == "house" and (m.get("median_house") or 0) > 2e6:
+            yld += " (3-bed rent vs a whole-market median — premium-home yields read low.)"
     return (f"Median house {_money(m['median_house'])} ({m['house_year']}): {g12s}, {cagrs} — {growth}.{val}{yld}")
 
 
@@ -203,7 +214,9 @@ def _tags(p: dict, family: float | None, seifa_dec: int, dev: float, market: dic
     if (infra_score or 0) >= 72: t.append("Grid-ready")
     if sc("detached") >= 72: t.append("Redevelopment headroom")
     if z and z["heritage_share"] >= 0.25: t.append("Heritage constrained")
-    if (market.get("yield_house") or 0) >= 4.2: t.append("Strong yield")
+    if z and z.get("flood_share", 0) >= 0.25: t.append("Flood overlay")
+    if z and z.get("bushfire_share", 0) >= 0.25: t.append("Bushfire overlay")
+    if (market.get("yield_headline") or 0) >= 4.2: t.append("Strong yield")
     if sc("rental") >= 72: t.append("High rental demand")
     if sc("owner_occ") >= 72 and sc("rental") <= 35: t.append("Tightly held")
     if sc("low_density") >= 72: t.append("Low density")
@@ -217,6 +230,17 @@ def _tags(p: dict, family: float | None, seifa_dec: int, dev: float, market: dic
 def compute_scores(records: dict[str, dict]) -> dict[str, dict]:
     codes = list(records)
     g = lambda key: {c: records[c].get(key) for c in codes}  # noqa: E731
+
+    # combined hazard coverage (flood + bushfire overlays) and headline yield
+    # (unit yield where units dominate the stock, else 3BR-house yield)
+    hazard = {}
+    yield_head = {}
+    for c in codes:
+        r = records[c]
+        fl, bf = r.get("flood_share"), r.get("bushfire_share")
+        hazard[c] = (fl or 0) + (bf or 0) if (fl is not None or bf is not None) else None
+        yield_head[c] = (r.get("yield_unit") if r.get("yield_basis") == "unit"
+                         else r.get("yield_house")) or r.get("yield_house") or r.get("yield_unit")
 
     n = {
         "person_safety": _percentiles(g("person_crime"), invert=True),
@@ -243,7 +267,11 @@ def compute_scores(records: dict[str, dict]) -> dict[str, dict]:
         "school_dens": _percentiles(g("schools_3km")),
         "zoning": _percentiles(g("zoning_raw")),
         "heritage_free": _percentiles(g("heritage_share"), invert=True),
-        "yield": _percentiles(g("yield_house")),
+        "hazard_free": _percentiles(hazard, invert=True),
+        "ugz": _percentiles(g("ugz_share")),
+        "upzone": _percentiles(g("growth_share")),           # upzoned share only (no UGZ)
+        "unrestricted": _percentiles(g("restrict_share"), invert=True),
+        "yield": _percentiles(yield_head),
     }
 
     # ---- pass 1: sub-scores + raw weighted composites -----------------------
@@ -266,7 +294,7 @@ def compute_scores(records: dict[str, dict]) -> dict[str, dict]:
             "person_safety": n["person_safety"][c], "seifa": n["seifa"][c],
             "owner_occ": n["owner_occ"][c], "property_safety": n["property_safety"][c],
             "family_child": n["child"][c], "transport": transport_score,
-            "schools": schools_score,
+            "schools": schools_score, "hazard_free": n["hazard_free"][c],
         }
         live_raw, live_used = _weighted(live_norm, config.LIVE_WEIGHTS)
         live_family_raw, _ = _weighted(live_norm, config.LIVE_WEIGHTS_FAMILY)
@@ -279,12 +307,25 @@ def compute_scores(records: dict[str, dict]) -> dict[str, dict]:
             "growth": n["growth"][c], "infra": infra_score,
             "station": n["station_prox"][c], "yield": n["yield"][c],
             "rental_share": n["rental"][c], "low_density": n["low_density"][c],
-            "heritage_free": n["heritage_free"][c],
+            "heritage_free": n["heritage_free"][c], "hazard_free": n["hazard_free"][c],
         }, config.DEV_WEIGHTS)
+        green_raw, _ = _weighted({
+            "ugz": n["ugz"][c], "unrestricted": n["unrestricted"][c],
+            "low_density": n["low_density"][c], "growth": n["growth"][c],
+            "detached_share": n["detached"][c], "yield": n["yield"][c],
+            "infra": infra_score,
+        }, config.DEV_GREENFIELD_WEIGHTS)
+        infill_raw, _ = _weighted({
+            "upzone": n["upzone"][c], "station": n["station_prox"][c],
+            "detached_share": n["detached"][c], "heritage_free": n["heritage_free"][c],
+            "growth": n["growth"][c], "rental_share": n["rental"][c],
+            "hazard_free": n["hazard_free"][c],
+        }, config.DEV_INFILL_WEIGHTS)
         interim[c] = {
             "schools_score": schools_score, "transport_score": transport_score,
             "family": family, "infra_score": infra_score,
             "live_raw": live_raw, "live_family_raw": live_family_raw, "dev_raw": dev_raw,
+            "green_raw": green_raw, "infill_raw": infill_raw,
             "live_used": live_used, "dev_used": dev_used,
         }
 
@@ -296,6 +337,8 @@ def compute_scores(records: dict[str, dict]) -> dict[str, dict]:
     live_s = _percentiles({c: interim[c]["live_raw"] for c in codes})
     livef_s = _percentiles({c: interim[c]["live_family_raw"] for c in codes})
     dev_s = _percentiles({c: interim[c]["dev_raw"] for c in codes})
+    green_s = _percentiles({c: interim[c]["green_raw"] for c in codes})
+    infill_s = _percentiles({c: interim[c]["infill_raw"] for c in codes})
     overall_val = {c: (round(config.DEFAULT_BLEND["live"] * live_s[c]
                              + config.DEFAULT_BLEND["dev"] * dev_s[c], 1)
                        if live_s[c] is not None and dev_s[c] is not None else None)
@@ -330,7 +373,8 @@ def compute_scores(records: dict[str, dict]) -> dict[str, dict]:
             "schools": {"score": schools_score, "raw": r.get("nearest_primary_km")},
             "zoning": {"score": n["zoning"][c], "raw": r.get("zoning_raw")},
             "heritage_free": {"score": n["heritage_free"][c], "raw": r.get("heritage_share")},
-            "yield": {"score": n["yield"][c], "raw": r.get("yield_house")},
+            "hazard_free": {"score": n["hazard_free"][c], "raw": hazard[c]},
+            "yield": {"score": n["yield"][c], "raw": yield_head[c]},
         }
         seifa_dec = r.get("irsad_decile") or 0
         fam_label = ("Family-friendly" if (family or 0) >= 72 else
@@ -346,7 +390,8 @@ def compute_scores(records: dict[str, dict]) -> dict[str, dict]:
             "rent_weekly": r.get("rent_weekly"), "rent_12m": r.get("rent_12m"),
             "rent_quarter": r.get("rent_quarter"),
             "yield_house": r.get("yield_house"), "yield_unit": r.get("yield_unit"),
-            "yield_signal": _yield_signal(r.get("yield_house")),
+            "yield_headline": yield_head[c], "yield_basis": r.get("yield_basis"),
+            "yield_signal": _yield_signal(yield_head[c]),
         }
         infra = {
             "score": infra_score,
@@ -370,7 +415,9 @@ def compute_scores(records: dict[str, dict]) -> dict[str, dict]:
             "schools_3km": r.get("schools_3km"),
         }
         zraw = ({"growth_share": r.get("growth_share") or 0, "restrict_share": r.get("restrict_share") or 0,
-                 "heritage_share": r.get("heritage_share") or 0, "zone_mix": r.get("zone_mix") or []}
+                 "heritage_share": r.get("heritage_share") or 0,
+                 "flood_share": r.get("flood_share") or 0, "bushfire_share": r.get("bushfire_share") or 0,
+                 "zone_mix": r.get("zone_mix") or []}
                 if r.get("zoning_raw") is not None else None)
         zoning = None
         if zraw is not None:
@@ -378,6 +425,7 @@ def compute_scores(records: dict[str, dict]) -> dict[str, dict]:
                 "score": n["zoning"][c],
                 "growth_share": r.get("growth_share"), "standard_share": r.get("standard_share"),
                 "restrict_share": r.get("restrict_share"), "heritage_share": r.get("heritage_share"),
+                "flood_share": r.get("flood_share"), "bushfire_share": r.get("bushfire_share"),
                 "zone_mix": r.get("zone_mix") or [],
                 "label": _zoning_label(zraw),
             }
@@ -396,6 +444,8 @@ def compute_scores(records: dict[str, dict]) -> dict[str, dict]:
             "pop_year": r.get("pop_year"),
             "precinct": precinct,
             "live": live, "live_family": live_family, "dev": dev,
+            "dev_green": green_s[c] if green_s[c] is not None else 50.0,
+            "dev_infill": infill_s[c] if infill_s[c] is not None else 50.0,
             # grade = distribution tier of the default-blend Overall (A+ = top ~10%)
             "overall": overall, "grade": config.grade_for(overall_pct[c] if overall_pct[c] is not None else 50.0),
             "family": {"score": family, "label": fam_label},

@@ -18,7 +18,7 @@ SOURCES_NOTE = {
     "rents": "DFFH Rental Report — moving annual median rents by suburb (LGA fallback), Sep 2025",
     "transport": "DTP annual train-station patronage (metro + V/Line) station locations, FY2024-25",
     "schools": "Vic Dept of Education — School Locations 2025 (all sectors)",
-    "zoning": "Vicmap Planning / VicPlan — planning-scheme zones + Heritage Overlay (sampled per SA2)",
+    "zoning": "Vicmap Planning / VicPlan — planning-scheme zones + Heritage/flood (LSIO/SBO/FO)/bushfire (BMO) overlays (sampled per SA2)",
     "electricity": "Geoscience Australia — National Electricity Infrastructure (transmission lines + substations, v4 2024)",
 }
 
@@ -69,12 +69,13 @@ def build() -> None:
     price_data = prices.get_prices(names)
     print("5/9 rents (DFFH Rental Report)")
     rent_data = rents.get_rents(names, lgas)
-    print("6/9 transport (train stations)")
-    station_data = transport.get_stations(points)
-    print("7/9 schools")
-    school_data = schools.get_schools(points)
-    print("8/9 zoning (VicPlan) + electricity (Geoscience Australia)")
+    print("6/9 zoning + overlays (VicPlan)")
     zone_data = zoning.get_zoning(geoms)
+    res_pts = {c: z.get("res_points") for c, z in zone_data.items()}
+    print("7/9 transport (train stations, residential-weighted)")
+    station_data = transport.get_stations(points, res_pts)
+    print("8/9 schools (residential-weighted) + electricity (Geoscience Australia)")
+    school_data = schools.get_schools(points, res_pts)
     infra_data = electricity.get_infra(points)
 
     print("9/9 scoring")
@@ -120,6 +121,11 @@ def build() -> None:
             "rent_quarter": rn.get("rent_quarter"), "rent_source": rn.get("rent_source"),
             "yield_house": _yield_pct(rn.get("house_rent"), pr.get("median_house")),
             "yield_unit": _yield_pct(rn.get("flat_rent"), pr.get("median_unit")),
+            # headline yield: units where units dominate the stock (3BR-house rent
+            # against a unit-heavy market median otherwise misstates the economics)
+            "yield_basis": ("unit" if (h.get("detached") is not None and h["detached"] < 0.35
+                                       and _yield_pct(rn.get("flat_rent"), pr.get("median_unit")))
+                            else "house"),
             "nearest_station_km": st.get("nearest_station_km"),
             "nearest_station": st.get("nearest_station"),
             "stations_3km": st.get("stations_3km"), "station_pax": st.get("station_pax"),
@@ -129,6 +135,8 @@ def build() -> None:
             "zoning_raw": zn.get("zoning_raw"),
             "growth_share": zn.get("growth_share"), "standard_share": zn.get("standard_share"),
             "restrict_share": zn.get("restrict_share"), "heritage_share": zn.get("heritage_share"),
+            "ugz_share": zn.get("ugz_share"),
+            "flood_share": zn.get("flood_share"), "bushfire_share": zn.get("bushfire_share"),
             "zone_mix": zn.get("zone_mix"),
             "nearest_transmission_km": inf.get("nearest_transmission_km"),
             "nearest_substation_km": inf.get("nearest_substation_km"),
@@ -146,7 +154,9 @@ def build() -> None:
         "presets": config.PRESETS,
         "weights": {"liveability": config.LIVE_WEIGHTS,
                     "liveability_family": config.LIVE_WEIGHTS_FAMILY,
-                    "development": config.DEV_WEIGHTS, "family": config.FAMILY_WEIGHTS},
+                    "development": config.DEV_WEIGHTS, "family": config.FAMILY_WEIGHTS,
+                    "dev_greenfield": config.DEV_GREENFIELD_WEIGHTS,
+                    "dev_infill": config.DEV_INFILL_WEIGHTS},
         "sources": SOURCES_NOTE,
         "areas": scored,
     }

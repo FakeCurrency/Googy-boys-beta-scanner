@@ -9,7 +9,7 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" />
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
       integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
-<link rel="stylesheet" href="css/app.css?v=12" />
+<link rel="stylesheet" href="css/app.css?v=13" />
 </head>
 <body>
 
@@ -72,6 +72,7 @@
       <svg class="ic ic-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" aria-hidden="true"><path d="M13 3 5 13h5l-1 8 8-11h-5z"/></svg> Show electricity network</label>
     <label class="elec-toggle"><input type="checkbox" id="stnToggle" />
       <svg class="ic ic-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="3" width="12" height="13" rx="2.5"/><path d="M6 10h12M9.5 16 7 20M14.5 16 17 20"/></svg> Show train stations</label>
+    <button class="w-btn" id="weightsBtn" title="Rebuild the scores with your own pillar weights — everything recomputes live">⚖ Customise weights</button>
   </div>
 
   <p class="modecopy" id="modeCopy"></p>
@@ -89,6 +90,25 @@
   </section>
   <div class="panel-foot"><span id="genline"></span></div>
 </aside>
+
+<div id="weightsModal" class="modal hidden" aria-hidden="true">
+  <div class="modal-content weights-modal glass">
+    <div class="modal-head">
+      <h2>Customise the score weights</h2>
+      <button class="close-btn" id="closeWeights" aria-label="Close">×</button>
+    </div>
+    <p class="w-intro">Drag any slider and the whole map, rankings and scorecards recompute instantly
+      with <em>your</em> weights (each score is re-ranked 0–100 across Greater Melbourne, missing data
+      excluded). Copy the URL to share your custom view. Grades keep the default weighting.</p>
+    <div class="w-cols">
+      <div><h4>Liveability</h4><div id="wLiveRows"></div></div>
+      <div><h4>Development</h4><div id="wDevRows"></div></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn ghost" id="resetWeights">Reset to defaults</button>
+    </div>
+  </div>
+</div>
 
 <div id="legend" class="legend glass"></div>
 <div id="hovercard" class="hovercard hidden"></div>
@@ -125,8 +145,10 @@
           <li>Try the one-click presets (Family First, Balanced Investor, Value-Add/Developer).</li>
           <li>Hit <strong>⇆ Compare</strong> on a scorecard, then tap a second suburb for a side-by-side.</li>
           <li>Type a street address in search to jump to its suburb.</li>
+          <li>Colour the map by <strong>Greenfield</strong> or <strong>Infill</strong> to separate the two development stories.</li>
+          <li><strong>⚖ Customise weights</strong> rebuilds every score with your own priorities.</li>
           <li>Toggle the electricity network or train stations on the map.</li>
-          <li>Copy the URL any time — it restores your exact view, suburb and comparison.</li>
+          <li>Copy the URL any time — it restores your exact view, suburb, comparison and custom weights.</li>
         </ul>
       </div>
     </div>
@@ -223,7 +245,13 @@
       </div>
       <div class="source-block">
         <h5>Planning &amp; Zoning</h5>
-        <p><strong>Vicmap Planning / VicPlan</strong> — planning-scheme zone polygons and the Heritage Overlay, sampled on a grid across each suburb. Zones are grouped into growth (RGZ, MUZ, ACZ, CCZ, C1Z, new HCTZ), standard (GRZ, UGZ precincts) and protective (NRZ, LDRZ, green wedge, farming).</p>
+        <p><strong>Vicmap Planning / VicPlan</strong> — planning-scheme zone polygons plus the Heritage,
+        flood (LSIO, SBO, FO) and bushfire (BMO) overlays, sampled on a grid across each suburb. Zones
+        are grouped into growth (RGZ, MUZ, ACZ, CCZ, C1Z, new HCTZ), standard (GRZ, UGZ precincts) and
+        protective (NRZ, LDRZ, green wedge, farming). The residentially-zoned sample points also anchor
+        the station/school distance measures, so big fringe suburbs are measured from where people live.
+        Two development sub-lenses are computed: <strong>Greenfield</strong> (UGZ corridors, land supply)
+        and <strong>Infill</strong> (upzoned, station-centred established suburbs).</p>
       </div>
       <div class="source-block">
         <h5>Geography</h5>
@@ -245,6 +273,6 @@
 <script>if (window.innerWidth < 900) document.getElementById('dock').classList.add('collapsed');</script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
         integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-<script src="js/app.js?v=12"></script>
+<script src="js/app.js?v=13"></script>
 </body>
 </html>

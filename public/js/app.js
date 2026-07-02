@@ -17,11 +17,13 @@
   let activeBest = null;          // "live" | "invest" | "develop" | null
   let selected = null;
 
-  // Colour-by options (one-tap toggles): overall/live/dev/family + raw layers.
+  // Colour-by options (one-tap toggles): composites, sub-lenses + raw layers.
   const COLORBY = [
     ["overall", "Overall"], ["live", "Liveability"], ["dev", "Development"],
+    ["greenfield", "Greenfield"], ["infill", "Infill"],
     ["safety", "Safety"], ["seifa", "Socio-economic"], ["family", "Family"],
-    ["growth", "Price growth"], ["grid", "Grid"],
+    ["growth", "Price growth"], ["yield", "Yield"], ["zoning", "Zoning"],
+    ["transport", "Trains"], ["schools", "Schools"], ["grid", "Grid"],
   ];
 
   const MODE_LABEL = { live: "Live", balanced: "Balanced", invest: "Invest / Develop" };
@@ -51,17 +53,27 @@
   const col = s => rampColor(s, MODE_RAMP[mode]);
   const pct = x => x == null ? "—" : Math.round(x * 100) + "%";
 
-  // ---- score accessors (mode-aware Liveability) -------------------------
-  const liveOf = a => mode === "live" ? a.live_family : a.live;     // family weighting in Live mode
-  const overallOf = a => Math.round((wLive * liveOf(a) + (1 - wLive) * a.dev) * 10) / 10;
+  // ---- score accessors (mode-aware Liveability, custom-weight aware) -----
+  Object.entries(A).forEach(([c, a]) => a._c = c);   // stamp codes for custom-score maps
+  let customW = null;                                 // {live:{k:0-100}, dev:{k:0-100}} | null
+  let custLive = null, custDev = null;                // Map code -> stretched 0-100
+  const liveOf = a => customW ? custLive.get(a._c) : (mode === "live" ? a.live_family : a.live);
+  const devOf = a => customW ? custDev.get(a._c) : a.dev;
+  const overallOf = a => Math.round((wLive * liveOf(a) + (1 - wLive) * devOf(a)) * 10) / 10;
   function metricOf(a) {
     switch (colorBy) {
       case "live": return liveOf(a);
-      case "dev": return a.dev;
+      case "dev": return devOf(a);
+      case "greenfield": return a.dev_green;
+      case "infill": return a.dev_infill;
       case "family": return a.family.score;
       case "safety": return a.pillars.person_safety.score;     // higher = safer (inverse crime)
       case "seifa": return a.pillars.seifa.score;
       case "growth": return a.market.growth_score;
+      case "yield": return a.pillars.yield.score;
+      case "zoning": return a.pillars.zoning.score;
+      case "transport": return a.transit.score;
+      case "schools": return a.schools.score;
       case "grid": return a.infra.score;
       default: return overallOf(a);
     }
@@ -99,7 +111,7 @@
   function hover(code) {
     const a = A[code]; if (!a) return;
     hc.innerHTML = `<b>${a.name}</b> · ${a.lga || ""}
-      <div class="hg"><span>Live ${liveOf(a)}</span><span>Dev ${a.dev}</span><span>Overall ${overallOf(a)}</span></div>`;
+      <div class="hg"><span>Live ${liveOf(a)}</span><span>Dev ${devOf(a)}</span><span>Overall ${overallOf(a)}</span></div>`;
     hc.classList.remove("hidden");
   }
   const hideHover = () => hc.classList.add("hidden");
@@ -122,8 +134,9 @@
     "Train access": "Distance to the nearest metro/V-Line station, plus how many are within 3 km.",
     "School access": "Distance to the nearest primary and secondary schools, plus choice within 3 km.",
     "Zoning upside": "Share of land zoned for intensification (RGZ, MUZ, ACZ, HCTZ, commercial) vs protective zoning — from Vicmap Planning.",
-    "Rental yield": "Gross yield: 3-bed-house annual rent ÷ median house price.",
+    "Rental yield": "Gross yield: annual rent ÷ median price. Uses the 2-bed-unit figures where units dominate the stock, else 3-bed house vs house median (which reads low in premium suburbs).",
     "Heritage freedom": "Inverse of Heritage Overlay coverage — heritage controls constrain redevelopment.",
+    "Hazard-free": "Inverse of flood (LSIO/SBO/FO) + bushfire (BMO) overlay coverage.",
   };
   const bar = (label, score, valText, sub) =>
     score == null
@@ -165,8 +178,8 @@
     const m = a.market;
     const sig = (label, cls) => `<span class="sig sig-${cls}">${label}</span>`;
     const rentLine = m.rent_weekly ? `Rent ~$${Math.round(m.rent_weekly)}/wk${
-        m.rent_12m != null ? ` (${m.rent_12m >= 0 ? "+" : ""}${m.rent_12m}% 12m)` : ""}${
-        m.yield_house ? ` · yield ≈${m.yield_house}%` : ""}${
+        m.rent_12m ? ` (${m.rent_12m >= 0 ? "+" : ""}${m.rent_12m}% 12m)` : ""}${
+        m.yield_headline ? ` · ${m.yield_basis === "unit" ? "unit " : ""}yield ≈${m.yield_headline}%` : ""}${
         a.coverage.rent === "lga" ? ` <span class="cov" title="No suburb-level rent series for this area — figure is the ${a.lga} LGA median">LGA-level</span>` : ""}` : "";
     if (!m.median_house)
       return `<div class="market mini"><div class="market-h">Market &amp; Price</div>
@@ -218,9 +231,14 @@
       `<span class="sig sig-val" title="${ZONE_NAMES[c] || c}">${c} ${Math.round(s * 100)}%</span>`).join("");
     const her = z.heritage_share >= 0.03
       ? `<span class="sig ${z.heritage_share >= 0.25 ? "sig-soft" : "sig-moderate"}">Heritage ${Math.round(z.heritage_share * 100)}%</span>` : "";
+    const flood = (z.flood_share || 0) >= 0.03
+      ? `<span class="sig sig-risk" title="Share of sampled land under a flood overlay (LSIO / SBO / FO) — check before buying or building">💧 Flood ${Math.round(z.flood_share * 100)}%</span>` : "";
+    const fire = (z.bushfire_share || 0) >= 0.03
+      ? `<span class="sig sig-risk" title="Share of sampled land under the Bushfire Management Overlay">🔥 Bushfire ${Math.round(z.bushfire_share * 100)}%</span>` : "";
     return `<div class="market${prominent ? "" : " mini"}">
-      <div class="market-h">Planning &amp; Zoning <span class="src">VicPlan</span></div>
+      <div class="market-h">Planning, Zoning &amp; Hazards <span class="src">VicPlan</span></div>
       <div class="market-sub"><span class="sig sig-${z.growth_share >= 0.2 ? "strong" : z.restrict_share >= 0.5 ? "soft" : "moderate"}">${z.label}</span>${mix}${her}</div>
+      ${flood || fire ? `<div class="market-sub">${flood}${fire}</div>` : ""}
       ${prominent && z.growth_share >= 0.2 ? `<p class="market-note">${Math.round(z.growth_share * 100)}% of sampled land is zoned for intensification — a genuine planning tailwind.</p>` : ""}</div>`;
   }
   const ZONE_NAMES = {
@@ -265,10 +283,13 @@
       ${comparePicking ? `<p class="cmp-hint">Now tap a second suburb on the map, list or search…
         <button class="cmp-x" id="cmpCancel">cancel</button></p>` : ""}
       <div class="bigrow">
-        <div class="big" style="background:${rampColor(lv, "live")}"><div class="lab">${liveLab}</div><div class="num">${lv}</div></div>
-        <div class="big" style="background:${rampColor(a.dev, "invest")}"><div class="lab">Development</div><div class="num">${a.dev}</div></div>
+        <div class="big" style="background:${rampColor(lv, "live")}"><div class="lab">${liveLab}${customW ? " ·custom" : ""}</div><div class="num">${lv}</div></div>
+        <div class="big" style="background:${rampColor(devOf(a), "invest")}"><div class="lab">Development${customW ? " ·custom" : ""}</div><div class="num">${devOf(a)}</div></div>
         <div class="big" style="background:${col(ov)}"><div class="lab">Overall</div><div class="num">${ov}</div></div>
       </div>
+      ${prominent ? `<div class="sublens" title="Two different development stories: Greenfield = estate-scale corridor build-out (UGZ precincts); Infill = upzoned, station-centred redevelopment in established suburbs.">
+        <span>Greenfield <b style="color:${col(a.dev_green)}">${a.dev_green}</b></span>
+        <span>Infill <b style="color:${col(a.dev_infill)}">${a.dev_infill}</b></span></div>` : ""}
       ${prominent ? marketBlock(a, true) + zoningBlock(a, true) + transitBlock(a, false) + infraBlock(a, true) : ""}
       <div class="pgroup-h">Liveability — safety &amp; stability</div>
       ${bar("Personal safety", p.person_safety.score, p.person_safety.raw == null ? "—" : Math.round(p.person_safety.raw).toLocaleString() + "/100k")}
@@ -324,7 +345,8 @@
         <span class="cmp-v"><b>${a.name}</b><span class="grade gmini" style="background:${gradeColor(a.grade)}">${a.grade}</span></span>
         <span class="cmp-v"><b>${b.name}</b><span class="grade gmini" style="background:${gradeColor(b.grade)}">${b.grade}</span></span></div>
       ${row("Liveability", lvA, lvB, num(lvA, lvB))}
-      ${row("Development", a.dev, b.dev, num(a.dev, b.dev))}
+      ${row("Development", devOf(a), devOf(b), num(devOf(a), devOf(b)))}
+      ${row("Greenfield / Infill", `${a.dev_green} / ${a.dev_infill}`, `${b.dev_green} / ${b.dev_infill}`)}
       ${row("Overall (your blend)", ovA, ovB, num(ovA, ovB))}
       ${row("Family suitability", a.family.score, b.family.score, num(a.family.score, b.family.score))}
       ${row("Personal safety", a.pillars.person_safety.score, b.pillars.person_safety.score,
@@ -445,8 +467,14 @@
   const CBY_TIPS = {
     overall: "Blend of Liveability and Development (set by the slider).",
     live: "How good it is to live or rent here now.", dev: "Room to invest, build or subdivide.",
+    greenfield: "Estate-scale corridor development: UGZ precincts, land headroom, momentum.",
+    infill: "Established-area uplift: upzoned land (RGZ/HCTZ/ACZ) near stations, heritage-light.",
     safety: "Personal-crime rate — greener = lower.", seifa: "ABS socio-economic advantage.",
     family: "Family-suitability score.", growth: "Recent 3-year price growth.",
+    yield: "Gross rental yield (unit yield where units dominate).",
+    zoning: "Zoned-for-growth share vs protective zoning (Vicmap).",
+    transport: "Train-station access from residential land.",
+    schools: "Primary/secondary school access from residential land.",
     grid: "Electricity-network support.",
   };
   const cbyRow = document.getElementById("colorByChips");
@@ -485,21 +513,29 @@
   function updateActiveCaption() {
     const el = document.getElementById("activePreset");
     const p = PRESETS.find(x => x.key === activePreset);
-    el.innerHTML = activeBest ? `Showing <b>${BEST_LABEL[activeBest]}</b> — top ~20 areas highlighted`
+    const cw = customW ? ` · <b>custom weights</b>` : "";
+    el.innerHTML = (activeBest ? `Showing <b>${BEST_LABEL[activeBest]}</b> — top ~20 areas highlighted`
       : p ? `Preset: <b>${p.label}</b> — ${p.blurb}`
-        : `Custom blend · <b>${Math.round(wLive * 100)}%</b> liveability`;
+        : `Custom blend · <b>${Math.round(wLive * 100)}%</b> liveability`) + cw;
   }
 
   // ---- legend + lists ---------------------------------------------------
   const LABELS = {
     overall: "Overall", live: "Liveability", dev: "Development", family: "Family suitability",
-    safety: "Safety (low crime)", seifa: "Socio-economic", growth: "Price growth", grid: "Grid support",
+    greenfield: "Greenfield potential", infill: "Infill potential",
+    safety: "Safety (low crime)", seifa: "Socio-economic", growth: "Price growth",
+    yield: "Rental yield", zoning: "Zoning upside", transport: "Train access",
+    schools: "School access", grid: "Grid support",
   };
   const LEGEND_DESC = {
     overall: "Blend of liveability & development", live: "How good it is to live or rent here",
     dev: "Room to build, invest or subdivide", safety: "Lower personal-crime rate",
+    greenfield: "Estate-scale corridor development potential",
+    infill: "Upzoned, station-centred redevelopment potential",
     seifa: "Socio-economic advantage", family: "How suitable for families",
-    growth: "Recent 3-year price growth", grid: "Electricity-network support",
+    growth: "Recent 3-year price growth", yield: "Gross rental yield",
+    zoning: "Land zoned to grow vs protected", transport: "Train-station access",
+    schools: "School access", grid: "Electricity-network support",
   };
   function updateLegend() {
     const el = document.getElementById("legend");
@@ -536,6 +572,10 @@
     p.set("m", mode); p.set("w", Math.round(wLive * 100));
     if (colorBy !== "overall") p.set("c", colorBy);
     if (minScore > 0) p.set("min", Math.round(minScore));
+    if (customW) {
+      p.set("lw", Object.keys(W_INPUTS.live).map(k => customW.live[k] || 0).join("."));
+      p.set("dw", Object.keys(W_INPUTS.dev).map(k => customW.dev[k] || 0).join("."));
+    }
     history.replaceState(null, "", "#" + p.toString());
   }
   function readHash() {
@@ -547,8 +587,113 @@
     if (p.get("c") && COLORBY.some(([k]) => k === p.get("c"))) colorBy = p.get("c");
     if (p.get("min") != null) minScore = Math.max(0, Math.min(90, +p.get("min") || 0));
     if (p.get("vs") && A[p.get("vs")]) compareWith = p.get("vs");
+    if (p.get("lw") && p.get("dw")) {           // restore shared custom weights
+      const parse = (kind, str) => {
+        const vals = str.split(".").map(v => Math.max(0, Math.min(50, +v || 0)));
+        const out = {};
+        Object.keys(W_INPUTS[kind]).forEach((k, i) => out[k] = vals[i] ?? 0);
+        return out;
+      };
+      customW = { live: parse("live", p.get("lw")), dev: parse("dev", p.get("dw")) };
+      recomputeCustom();
+    }
     return p.get("s") && A[p.get("s")] ? p.get("s") : true;
   }
+
+  // ---- custom weights (client-side re-scoring) ----------------------------
+  // All pillar percentiles ship in scores.json, so users can rebuild the Live
+  // and Development scores with their own weights. Raw weighted averages are
+  // re-ranked to 0-100 (same stretch the engine applies), nulls renormalised.
+  const W_INPUTS = {
+    live: {
+      person_safety: a => a.pillars.person_safety.score,
+      seifa: a => a.pillars.seifa.score,
+      transport: a => a.transit.score,
+      owner_occ: a => a.pillars.owner_occ.score,
+      schools: a => a.schools.score,
+      property_safety: a => a.pillars.property_safety.score,
+      family_child: a => a.pillars.child.score,
+      hazard_free: a => a.pillars.hazard_free ? a.pillars.hazard_free.score : null,
+    },
+    dev: {
+      detached_share: a => a.pillars.detached.score,
+      zoning: a => a.pillars.zoning.score,
+      growth: a => a.market.growth_score,
+      infra: a => a.infra.score,
+      station: a => a.transit.score,
+      yield: a => a.pillars.yield.score,
+      rental_share: a => a.pillars.rental.score,
+      low_density: a => a.pillars.low_density.score,
+      heritage_free: a => a.pillars.heritage_free.score,
+      hazard_free: a => a.pillars.hazard_free ? a.pillars.hazard_free.score : null,
+    },
+  };
+  const W_LABELS = {
+    person_safety: "Personal safety", seifa: "Socio-economic", transport: "Train access",
+    owner_occ: "Owner-occupied", schools: "School access", property_safety: "Property safety",
+    family_child: "Children 0–14", hazard_free: "Hazard-free (flood/fire)",
+    detached_share: "Detached headroom", zoning: "Zoning upside", growth: "Price growth",
+    infra: "Grid support", station: "Station proximity", yield: "Rental yield",
+    rental_share: "Rental turnover", low_density: "Low density", heritage_free: "Heritage freedom",
+  };
+  const defaultW = kind => {
+    const src = kind === "live" ? (data.weights || {}).liveability : (data.weights || {}).development;
+    const out = {};
+    Object.keys(W_INPUTS[kind]).forEach(k => out[k] = Math.round(((src || {})[k] || 0) * 100));
+    return out;
+  };
+  function stretchRanks(raw) {                   // Map code -> raw, ranked to 0-100
+    const vals = [...raw.entries()].filter(([, v]) => v != null).sort((x, y) => x[1] - y[1]);
+    const m = new Map();
+    vals.forEach(([c], i) => m.set(c, Math.round((i + 0.5) / vals.length * 1000) / 10));
+    raw.forEach((v, c) => { if (!m.has(c)) m.set(c, 50); });
+    return m;
+  }
+  function recomputeCustom() {
+    if (!customW) { custLive = custDev = null; return; }
+    const calc = kind => {
+      const raw = new Map();
+      for (const a of Object.values(A)) {
+        let s = 0, w = 0;
+        for (const [k, get] of Object.entries(W_INPUTS[kind])) {
+          const v = get(a), wt = customW[kind][k] || 0;
+          if (v != null && wt > 0) { s += v * wt; w += wt; }
+        }
+        raw.set(a._c, w > 0 ? s / w : null);
+      }
+      return stretchRanks(raw);
+    };
+    custLive = calc("live"); custDev = calc("dev");
+  }
+
+  const wModal = document.getElementById("weightsModal");
+  function buildWeightRows() {
+    for (const kind of ["live", "dev"]) {
+      const box = document.getElementById(kind === "live" ? "wLiveRows" : "wDevRows");
+      const cur = (customW && customW[kind]) || defaultW(kind);
+      box.innerHTML = Object.keys(W_INPUTS[kind]).map(k =>
+        `<label class="wrow"><span>${W_LABELS[k]}</span>
+          <input type="range" min="0" max="50" value="${cur[k] ?? 0}" data-kind="${kind}" data-k="${k}" />
+          <b>${cur[k] ?? 0}</b></label>`).join("");
+    }
+    wModal.querySelectorAll("input[type=range]").forEach(sl => sl.oninput = () => {
+      sl.nextElementSibling.textContent = sl.value;
+      if (!customW) customW = { live: defaultW("live"), dev: defaultW("dev") };
+      customW[sl.dataset.kind][sl.dataset.k] = +sl.value;
+      recomputeCustom(); refresh();
+    });
+  }
+  function openWeights() {
+    buildWeightRows();
+    wModal.classList.remove("hidden"); wModal.setAttribute("aria-hidden", "false");
+  }
+  const closeWeights = () => { wModal.classList.add("hidden"); wModal.setAttribute("aria-hidden", "true"); };
+  document.getElementById("weightsBtn").onclick = openWeights;
+  document.getElementById("closeWeights").onclick = closeWeights;
+  document.getElementById("resetWeights").onclick = () => {
+    customW = null; recomputeCustom(); buildWeightRows(); refresh();
+  };
+  wModal.onclick = e => { if (e.target === wModal) closeWeights(); };
 
   // ---- point-in-SA2 lookup (for address search) ---------------------------
   function inRing(x, y, ring) {

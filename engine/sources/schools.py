@@ -60,29 +60,61 @@ def _load_schools():
     return schools
 
 
-def get_schools(points: dict[str, tuple[float, float]]) -> dict[str, dict]:
-    """{sa2_code: {nearest_primary_km, nearest_secondary_km, schools_3km}}"""
+def _subsample(pts: list, cap: int) -> list:
+    if len(pts) <= cap:
+        return pts
+    step = len(pts) / cap
+    return [pts[int(i * step)] for i in range(cap)]
+
+
+def get_schools(points: dict[str, tuple[float, float]],
+                res_points: dict[str, list] | None = None) -> dict[str, dict]:
+    """{sa2_code: {nearest_primary_km, nearest_secondary_km, schools_3km}}
+
+    Distances are the median over residentially-zoned sample points (VicPlan
+    sampler) with the representative point as fallback — see transport.py.
+    """
     schools = _load_schools()
     near2 = NEAR_KM ** 2
     out = {}
+    res_used = 0
     for code, (lon, lat) in points.items():
-        px, py = _to_km(lon, lat)
-        best_p2 = best_s2 = float("inf")
+        rp = _subsample((res_points or {}).get(code) or [], 36)
+        if rp:
+            res_used += 1
+        sample = [_to_km(px, py) for px, py in rp] or [_to_km(lon, lat)]
+        cx = sum(x for x, _ in sample) / len(sample)
+        cy = sum(y for _, y in sample) / len(sample)
+        # prefilter to a widening box around the residential centroid for speed
+        cand = []
+        for reach in (12.0, 30.0, 1e9):
+            cand = [s for s in schools if abs(s[0] - cx) <= reach and abs(s[1] - cy) <= reach]
+            if any(s[2] for s in cand) and any(s[3] for s in cand):
+                break
+        p_meds, s_meds = [], []
         count = 0
-        for x, y, primary, secondary in schools:
-            d2 = (px - x) ** 2 + (py - y) ** 2
-            if primary and d2 < best_p2:
-                best_p2 = d2
-            if secondary and d2 < best_s2:
-                best_s2 = d2
-            if d2 <= near2:
+        for x, y, primary, secondary in cand:
+            if (cx - x) ** 2 + (cy - y) ** 2 <= near2:
                 count += 1
+        for px, py in sample:
+            bp = bs = float("inf")
+            for x, y, primary, secondary in cand:
+                d2 = (px - x) ** 2 + (py - y) ** 2
+                if primary and d2 < bp:
+                    bp = d2
+                if secondary and d2 < bs:
+                    bs = d2
+            p_meds.append(bp)
+            s_meds.append(bs)
+        p_meds.sort(); s_meds.sort()
+        bp2, bs2 = p_meds[len(p_meds) // 2], s_meds[len(s_meds) // 2]
         out[code] = {
-            "nearest_primary_km": round(best_p2 ** 0.5, 2) if best_p2 < float("inf") else None,
-            "nearest_secondary_km": round(best_s2 ** 0.5, 2) if best_s2 < float("inf") else None,
+            "nearest_primary_km": round(bp2 ** 0.5, 2) if bp2 < float("inf") else None,
+            "nearest_secondary_km": round(bs2 ** 0.5, 2) if bs2 < float("inf") else None,
             "schools_3km": count,
         }
-    print(f"  schools: {len(schools)} schools (all sectors) -> access for {len(out)} SA2s")
+    print(f"  schools: {len(schools)} schools -> access for {len(out)} SA2s "
+          f"({res_used} measured from residential land)")
     return out
 
 

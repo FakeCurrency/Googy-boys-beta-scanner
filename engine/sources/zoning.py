@@ -1,9 +1,10 @@
-"""Planning-zone + Heritage Overlay inputs per SA2 (Phase 4 — the real
-"development potential" layer).
+"""Planning-zone + overlay inputs per SA2 (Phase 4/5 — the real
+"development potential" + hazard layer).
 
 Source: VicPlan / Vicmap Planning ArcGIS services (plan-gis.mapshare.vic.gov.au):
-  * Planning Scheme Zones (layer 0, "All Zones")   — ZONE_CODE polygons
-  * Heritage Overlay      (overlays service, layer 9)
+  * Planning Scheme Zones (layer 0, "All Zones")     — ZONE_CODE polygons
+  * All Overlays          (overlays service layer 0) — filtered to the codes we
+    score: HO (heritage), FO/LSIO/SBO/RFO (flood), BMO (bushfire)
 
 For each SA2 we fetch the zone/overlay polygons intersecting its bounding box
 (geometry simplified server-side), lay a regular sample grid over the SA2
@@ -11,11 +12,16 @@ polygon, and classify each grid point. Shares of sampled land:
   growth   — zoned for intensification (RGZ, MUZ, ACZ, CCZ, C1Z, HCTZ, ...)
   standard — general residential (GRZ, TZ, UGZ precincts, ...)
   restrict — protective zoning (NRZ, LDRZ, Green Wedge, farming, parkland...)
-  heritage — covered by a Heritage Overlay (a real redevelopment constraint)
+  ugz      — Urban Growth Zone alone (the greenfield sub-lens input)
+  heritage / flood / bushfire — overlay coverage (real constraints / hazards)
+
+We also keep the *residentially-zoned* sample points per SA2 so distance
+metrics (stations, schools) can be measured from where people actually live
+rather than the geometric centroid — a big fix for large fringe SA2s.
 
 zoning_raw = growth + 0.45*standard - 0.35*restrict  (percentile-normalised in
 score.py; heritage is its own inverted input). Results are cached per SA2 in
-data_raw/vicplan_shares.json so the ~720 service queries only run once.
+data_raw/vicplan_shares_v2.json so the ~720 service queries only run once.
 """
 from __future__ import annotations
 
@@ -29,8 +35,15 @@ from .. import config
 
 ZONES_URL = ("https://plan-gis.mapshare.vic.gov.au/arcgis/rest/services/Planning/"
              "Vicplan_PlanningSchemeZones/MapServer/0/query")
-HO_URL = ("https://plan-gis.mapshare.vic.gov.au/arcgis/rest/services/Planning/"
-          "Vicplan_PlanningSchemeOverlays/MapServer/9/query")
+OVERLAYS_URL = ("https://plan-gis.mapshare.vic.gov.au/arcgis/rest/services/Planning/"
+                "Vicplan_PlanningSchemeOverlays/MapServer/0/query")
+OVERLAY_WHERE = ("ZONE_CODE LIKE 'HO%' OR ZONE_CODE LIKE 'FO%' OR ZONE_CODE LIKE 'LSIO%' "
+                 "OR ZONE_CODE LIKE 'SBO%' OR ZONE_CODE LIKE 'RFO%' OR ZONE_CODE LIKE 'BMO%'")
+FLOOD_CODES = {"FO", "LSIO", "SBO", "RFO"}
+FIRE_CODES = {"BMO"}
+# Zones where people live — these sample points drive the distance metrics.
+RESIDENTIAL_CODES = {"GRZ", "NRZ", "RGZ", "MUZ", "LDRZ", "TZ", "UGZ", "HCTZ",
+                     "ACZ", "CCZ", "C1Z", "R1Z", "R2Z", "R3Z"}
 _HEADERS = {"User-Agent": "Mozilla/5.0 (melb-scorer data build)"}
 TARGET_POINTS = 280
 WORKERS = 6
@@ -99,7 +112,7 @@ def _grid_points(polys, bbox, target=TARGET_POINTS):
     return pts
 
 
-def _query(url, bbox, out_fields):
+def _query(url, bbox, out_fields, where="1=1"):
     """All features intersecting bbox (paged past the 1000-record limit)."""
     feats, offset = [], 0
     env = {"xmin": bbox[0], "ymin": bbox[1], "xmax": bbox[2], "ymax": bbox[3],
@@ -107,7 +120,7 @@ def _query(url, bbox, out_fields):
     while True:
         r = requests.post(url, data={
             "geometry": json.dumps(env), "geometryType": "esriGeometryEnvelope", "inSR": 4326,
-            "spatialRel": "esriSpatialRelIntersects", "where": "1=1",
+            "spatialRel": "esriSpatialRelIntersects", "where": where,
             "outFields": out_fields, "returnGeometry": "true", "outSR": 4326,
             "maxAllowableOffset": 0.0003, "geometryPrecision": 5,
             "resultOffset": offset, "f": "geojson",
@@ -132,11 +145,14 @@ def _shares_for(sa2_geom: dict) -> dict | None:
     zones = [( _rings_of(f["geometry"]), _bbox(_rings_of(f["geometry"])),
                _base_code(f["properties"].get("ZONE_CODE")))
              for f in _query(ZONES_URL, bbox, "ZONE_CODE") if f.get("geometry")]
-    ho = [(_rings_of(f["geometry"]), _bbox(_rings_of(f["geometry"])))
-          for f in _query(HO_URL, bbox, "ZONE_CODE") if f.get("geometry")]
+    overlays = [(_rings_of(f["geometry"]), _bbox(_rings_of(f["geometry"])),
+                 _base_code(f["properties"].get("ZONE_CODE")))
+                for f in _query(OVERLAYS_URL, bbox, "ZONE_CODE", OVERLAY_WHERE)
+                if f.get("geometry")]
 
     mix: dict[str, int] = {}
-    classified = heritage = 0
+    classified = heritage = flood = fire = 0
+    res_points: list[list[float]] = []
     for x, y in pts:
         code = None
         for zp, zb, zc in zones:
@@ -146,10 +162,21 @@ def _shares_for(sa2_geom: dict) -> dict | None:
         if code:
             classified += 1
             mix[code] = mix.get(code, 0) + 1
-        for hp, hb in ho:
-            if hb[0] <= x <= hb[2] and hb[1] <= y <= hb[3] and _in_polys(x, y, hp):
-                heritage += 1
+            if code in RESIDENTIAL_CODES:
+                res_points.append([round(x, 4), round(y, 4)])
+        hit_h = hit_f = hit_b = False
+        for op, ob, oc in overlays:
+            if hit_h and hit_f and hit_b:
                 break
+            kind = ("h" if oc.startswith("HO") else
+                    "f" if oc in FLOOD_CODES else
+                    "b" if oc in FIRE_CODES else None)
+            if kind is None or (kind == "h" and hit_h) or (kind == "f" and hit_f) or (kind == "b" and hit_b):
+                continue
+            if ob[0] <= x <= ob[2] and ob[1] <= y <= ob[3] and _in_polys(x, y, op):
+                if kind == "h": heritage += 1; hit_h = True
+                elif kind == "f": flood += 1; hit_f = True
+                else: fire += 1; hit_b = True
     if classified < 8:
         return None
 
@@ -160,9 +187,13 @@ def _shares_for(sa2_geom: dict) -> dict | None:
     top = sorted(mix.items(), key=lambda kv: -kv[1])[:4]
     return {
         "growth_share": growth, "standard_share": standard, "restrict_share": restrict,
+        "ugz_share": share({"UGZ"}),
         "heritage_share": round(heritage / len(pts), 4),
+        "flood_share": round(flood / len(pts), 4),
+        "bushfire_share": round(fire / len(pts), 4),
         "zoning_raw": round(growth + 0.45 * standard - 0.35 * restrict, 4),
         "zone_mix": [[c, round(n / classified, 3)] for c, n in top],
+        "res_points": res_points,
         "n_points": len(pts),
     }
 
@@ -170,7 +201,7 @@ def _shares_for(sa2_geom: dict) -> dict | None:
 def get_zoning(features_by_code: dict[str, dict]) -> dict[str, dict]:
     """{sa2_code: {growth_share, standard_share, restrict_share, heritage_share,
                    zoning_raw, zone_mix}} — cached, resumable."""
-    cache_path = config.DATA_RAW / "vicplan_shares.json"
+    cache_path = config.DATA_RAW / "vicplan_shares_v2.json"
     cache: dict[str, dict] = {}
     if cache_path.exists() and cache_path.stat().st_size > 0:
         cache = json.loads(cache_path.read_text(encoding="utf-8"))
@@ -215,7 +246,9 @@ if __name__ == "__main__":  # pragma: no cover
     feats = {f["properties"]["sa2_code"]: f["geometry"] for f in fc["features"]}
     names = {f["properties"]["sa2_code"]: f["properties"]["sa2_name"] for f in fc["features"]}
     z = get_zoning(feats)
-    for nm in ("Toorak", "Tarneit - North", "Nunawading", "Brunswick", "Warrandyte - Wonga Park"):
+    for nm in ("Toorak", "Tarneit - North", "Nunawading", "Warrandyte - Wonga Park", "Elwood", "Maribyrnong"):
         code = next((c for c, n in names.items() if n == nm), None)
         if code and code in z:
-            print(f"  {nm:28} {z[code]}")
+            r = {k: v for k, v in z[code].items() if k != "res_points"}
+            r["res_n"] = len(z[code].get("res_points") or [])
+            print(f"  {nm:28} {r}")
