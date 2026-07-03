@@ -97,7 +97,8 @@
     const a = A[f.properties.sa2_code]; if (!a) return { fillColor: "#bbb", fillOpacity: .25, weight: .6, color: "rgba(255,255,255,.5)" };
     const v = metricOf(a), sel = f.properties.sa2_code === selected;
     if (v == null) return { weight: sel ? 2.4 : .6, color: sel ? "#0a84ff" : "rgba(255,255,255,.5)", fillColor: "#9a9aa0", fillOpacity: .18 };
-    return { weight: sel ? 2.4 : .6, color: sel ? "#0a84ff" : "rgba(255,255,255,.5)", fillColor: col(v), fillOpacity: v >= minScore ? .8 : .07 };
+    // the selected suburb is always shown in full colour, even when filtered out
+    return { weight: sel ? 2.4 : .6, color: sel ? "#0a84ff" : "rgba(255,255,255,.5)", fillColor: col(v), fillOpacity: (sel || v >= minScore) ? .8 : .07 };
   };
   const layer = L.geoJSON(geo, {
     style,
@@ -317,9 +318,9 @@
       ${comparePicking ? `<p class="cmp-hint">Now tap a second suburb on the map, list or search…
         <button class="cmp-x" id="cmpCancel">cancel</button></p>` : ""}
       <div class="rings">
-        ${ring(liveLab + (customW ? " · custom" : ""), lv, "var(--green)")}
-        ${ring("Development" + (customW ? " · custom" : ""), devOf(a), "var(--indigo)")}
-        ${ring("Overall", ov, "var(--accent)")}
+        ${ring(liveLab + (customW ? " · custom" : ""), lv, rampColor(lv, "balanced"))}
+        ${ring("Development" + (customW ? " · custom" : ""), devOf(a), rampColor(devOf(a), "balanced"))}
+        ${ring("Overall", ov, rampColor(ov, "balanced"))}
       </div>
       ${prominent ? `<div class="sublens" title="Two different development stories: Greenfield = estate-scale corridor build-out (UGZ precincts); Infill = upzoned, station-centred redevelopment in established suburbs.">
         <span>Greenfield <b style="color:${col(a.dev_green)}">${a.dev_green}</b></span>
@@ -423,6 +424,12 @@
       comparePicking = false; compareWith = code;
       repaint(); renderCompare(selected, compareWith); writeHash();
       return;
+    }
+    // navigating to a suburb the min-score filter is hiding: drop the filter so
+    // the searched area and its surroundings show their colours
+    const mv = A[code] ? metricOf(A[code]) : null;
+    if (fly && minScore > 0 && mv != null && mv < minScore) {
+      minScore = 0; activeBest = null; setMinSlider(); highlightBest();
     }
     selected = code; repaint();
     if (compareWith && compareWith !== code) renderCompare(code, compareWith);
