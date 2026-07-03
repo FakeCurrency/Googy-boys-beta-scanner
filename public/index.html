@@ -6,7 +6,7 @@
 <title>Melbourne Property — live, invest &amp; develop scores by suburb</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
       integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
-<link rel="stylesheet" href="css/app.css?v=18" />
+<link rel="stylesheet" href="css/app.css?v=19" />
 </head>
 <body>
 
@@ -31,6 +31,7 @@
       <input id="search" type="search" placeholder="Suburb, postcode or address…" autocomplete="off" />
       <div id="results"></div>
     </div>
+    <button id="askBtn" class="tb-btn" title="Ask in plain English — e.g. “$650k family home near a train”">Ask</button>
     <button id="aboutBtn" class="tb-btn">Guide</button>
     <button id="theme" class="tb-icon" title="Toggle dark / light" aria-label="Toggle theme"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.2A8 8 0 1 1 9.8 4 6.2 6.2 0 0 0 20 14.2Z"/></svg></button>
   </div>
@@ -39,6 +40,10 @@
 <!-- floating control dock -->
 <aside id="dock" class="glass">
   <div class="grab" id="dockGrab" aria-hidden="true"></div>
+  <div class="dock-sec">
+    <button class="w-btn ask-cta" id="askBtn2" title="Ask in plain English — answered instantly from the data"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5c-1.5 0-2.9-.35-4.1-.98L3 20l1.05-5.2A8.5 8.5 0 1 1 21 11.5Z"/><path d="M9.3 9.2a2.7 2.7 0 0 1 5.3.7c0 1.8-2.4 2.1-2.4 3.4"/><circle cx="12.2" cy="16.1" r=".4" fill="currentColor"/></svg>
+      Ask — “$650k to live, near a train”</button>
+  </div>
   <div class="dock-sec">
     <div class="sec-h">Show me the best</div>
     <div class="best-row" id="bestRow">
@@ -87,6 +92,30 @@
   </section>
   <div class="panel-foot"><span id="genline"></span></div>
 </aside>
+
+<div id="askModal" class="modal hidden" aria-hidden="true">
+  <div class="modal-content weights-modal glass">
+    <div class="modal-head">
+      <h2>Ask</h2>
+      <button class="close-btn" id="closeAsk" aria-label="Close">×</button>
+    </div>
+    <p class="w-intro">Plain English — budget, goal and any must-haves. Answered instantly from the
+      data: prices, safety, schools, trains, zoning, yield.</p>
+    <div class="ask-bar">
+      <input id="askInput" type="text" placeholder="e.g. I have $500k and want to live…" autocomplete="off" />
+      <button class="btn" id="askGo">Ask</button>
+    </div>
+    <div class="cby ask-chips" id="askChips">
+      <button data-q="$500k and I want to live">$500k to live</button>
+      <button data-q="$800k to invest">$800k to invest</button>
+      <button data-q="$700k family home near a train">$700k family, near train</button>
+      <button data-q="best rental yield under $600k">Yield under $600k</button>
+      <button data-q="$450k unit somewhere safe">$450k unit, safe</button>
+    </div>
+    <p class="w-intro" id="askSummary"></p>
+    <div id="askResults"></div>
+  </div>
+</div>
 
 <div id="weightsModal" class="modal hidden" aria-hidden="true">
   <div class="modal-content weights-modal glass">
@@ -141,6 +170,7 @@
           <li>Use the slider to blend Liveability and Development Potential.</li>
           <li>Try the one-click presets (Family First, Balanced Investor, Value-Add/Developer).</li>
           <li>Hit <strong>Compare</strong> on a scorecard, then tap a second suburb for a side-by-side.</li>
+          <li>Hit <strong>Ask</strong> and type a budget + goal — “&#36;500k to live”, “&#36;800k to invest” — for instant matches.</li>
           <li>Search accepts suburb names, <strong>postcodes</strong> (e.g. 3150) and street addresses.</li>
           <li>Colour the map by <strong>Greenfield</strong> or <strong>Infill</strong> to separate the two development stories.</li>
           <li><strong>Customise weights</strong> rebuilds every score with your own priorities.</li>
@@ -279,6 +309,6 @@
 <script>if (window.innerWidth < 900) document.getElementById('dock').classList.add('collapsed');</script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
         integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-<script src="js/app.js?v=18"></script>
+<script src="js/app.js?v=19"></script>
 </body>
 </html>

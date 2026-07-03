@@ -19,6 +19,7 @@
   let activePreset = null;        // preset key or null (custom)
   let activeBest = null;          // "live" | "invest" | "develop" | null
   let selected = null;
+  let askSet = null;              // Set of sa2 codes matched by the Ask feature
 
   // Colour-by options (one-tap toggles): composites, sub-lenses + raw layers.
   const COLORBY = [
@@ -97,8 +98,9 @@
     const a = A[f.properties.sa2_code]; if (!a) return { fillColor: "#bbb", fillOpacity: .25, weight: .6, color: "rgba(255,255,255,.5)" };
     const v = metricOf(a), sel = f.properties.sa2_code === selected;
     if (v == null) return { weight: sel ? 2.4 : .6, color: sel ? "#0a84ff" : "rgba(255,255,255,.5)", fillColor: "#9a9aa0", fillOpacity: .18 };
-    // the selected suburb is always shown in full colour, even when filtered out
-    return { weight: sel ? 2.4 : .6, color: sel ? "#0a84ff" : "rgba(255,255,255,.5)", fillColor: col(v), fillOpacity: (sel || v >= minScore) ? .8 : .07 };
+    // Ask results: matched suburbs paint, everything else fades right back
+    const dim = askSet ? !askSet.has(f.properties.sa2_code) : v < minScore;
+    return { weight: sel ? 2.4 : .6, color: sel ? "#0a84ff" : "rgba(255,255,255,.5)", fillColor: col(v), fillOpacity: (sel || !dim) ? .8 : .07 };
   };
   const layer = L.geoJSON(geo, {
     style,
@@ -471,7 +473,7 @@
   }
   function setMode(m, keepPreset) {
     mode = m; if (!keepPreset) activePreset = null;
-    activeBest = null; minScore = 0;
+    activeBest = null; minScore = 0; askSet = null;
     wLive = MODE_PRESETS[m]; colorBy = MODE_COLORBY[m];
     setSlider(); setMinSlider(); highlightModes(); refresh();
   }
@@ -483,7 +485,7 @@
        <span class="pt">${p.label}</span><span class="pp">${p.live}% liveability</span></button>`).join("");
   presetRow.querySelectorAll(".preset").forEach(btn => btn.onclick = () => {
     const p = PRESETS.find(x => x.key === btn.dataset.key);
-    activePreset = p.key; activeBest = null; minScore = 0;
+    activePreset = p.key; activeBest = null; minScore = 0; askSet = null;
     mode = p.mode; wLive = p.live / 100; colorBy = p.colorBy;
     setSlider(); setMinSlider(); highlightModes(); refresh();
   });
@@ -508,7 +510,7 @@
   let rafPaint = 0;
   const schedulePaint = () => { if (!rafPaint) rafPaint = requestAnimationFrame(() => { rafPaint = 0; repaint(); highlightBest(); writeHash(); }); };
   blend.oninput = () => { wLive = blend.value / 100; activePreset = null; activeBest = null; setSlider(); scheduleRefresh(); };
-  minScore$.oninput = () => { minScore = +minScore$.value; activeBest = null; document.getElementById("minVal").textContent = minScore; schedulePaint(); };
+  minScore$.oninput = () => { minScore = +minScore$.value; activeBest = null; askSet = null; document.getElementById("minVal").textContent = minScore; schedulePaint(); };
 
   // colour-by toggle chips (one tap to colour the map by a single layer)
   const CBY_TIPS = {
@@ -537,7 +539,7 @@
   };
   function showBest(kind) {
     const b = BEST[kind];
-    mode = b.mode; colorBy = b.colorBy; wLive = b.wLive; activePreset = null; activeBest = kind;
+    mode = b.mode; colorBy = b.colorBy; wLive = b.wLive; activePreset = null; activeBest = kind; askSet = null;
     setSlider();
     const ranked = entries.slice().sort((x, y) => metricRank(y[1]) - metricRank(x[1]));
     minScore = Math.max(0, Math.min(90, Math.floor(metricOf(ranked[Math.min(19, ranked.length - 1)][1]))));
@@ -561,9 +563,12 @@
     const el = document.getElementById("activePreset");
     const p = PRESETS.find(x => x.key === activePreset);
     const cw = customW ? ` · <b>custom weights</b>` : "";
-    el.innerHTML = (activeBest ? `Showing <b>${BEST_LABEL[activeBest]}</b> — top ~20 areas highlighted`
+    el.innerHTML = (askSet ? `Showing <b>${askSet.size} Ask matches</b> <button class="cmp-x" id="askClear">clear</button>`
+      : activeBest ? `Showing <b>${BEST_LABEL[activeBest]}</b> — top ~20 areas highlighted`
       : p ? `Preset: <b>${p.label}</b> — ${p.blurb}`
         : `Custom blend · <b>${Math.round(wLive * 100)}%</b> liveability`) + cw;
+    const ac = el.querySelector("#askClear");
+    if (ac) ac.onclick = () => { askSet = null; refresh(); };
   }
 
   // ---- legend + lists ---------------------------------------------------
@@ -833,6 +838,99 @@
   };
   map.on("click", closeSearch);
 
+  // ---- Ask: plain-English budget/goal queries, answered from the data -----
+  // "500k and I want to live" / "800k to invest" — parsed and ranked entirely
+  // client-side; no API, works offline, instant for every visitor.
+  const askModal = document.getElementById("askModal");
+  const askInput = document.getElementById("askInput");
+  const askResults = document.getElementById("askResults");
+  const askSummary = document.getElementById("askSummary");
+
+  function parseAsk(q) {
+    const s = " " + q.toLowerCase() + " ";
+    let budget = null, m;
+    if ((m = s.match(/\$?\s*(\d+(?:\.\d+)?)\s*(m\b|mil|million)/))) budget = parseFloat(m[1]) * 1e6;
+    else if ((m = s.match(/\$?\s*(\d+(?:\.\d+)?)\s*k\b/))) budget = parseFloat(m[1]) * 1e3;
+    else if ((m = s.match(/\$?\s*(\d{1,3}(?:[, ]\d{3})+|\d{6,})\b/))) budget = parseFloat(m[1].replace(/[, ]/g, ""));
+    else if ((m = s.match(/\$\s*(\d+(?:\.\d+)?)/))) { const n = parseFloat(m[1]); budget = n <= 20 ? n * 1e6 : n * 1e3; }
+    else if ((m = s.match(/\b(\d{3,4})\b/))) { const n = +m[1]; if (n >= 200 && n <= 5000) budget = n * 1e3; }
+    let goal = "live";
+    if (/famil|kids|children|school/.test(s)) goal = "family";
+    if (/invest|growth|buy and hold|portfolio|capital/.test(s)) goal = "invest";
+    if (/develop|subdivi|build|knock|redevelop|land bank/.test(s)) goal = "develop";
+    if (/yield|rental income|cash ?flow|rent (it |them )?out|positivel?y gear/.test(s)) goal = "yield";
+    return {
+      budget, goal,
+      unit: /unit|apartment|\bflat\b|condo|townhouse/.test(s),
+      safe: /\bsafe|safety|low crime/.test(s),
+      train: /train|station|commut/.test(s),
+      region: (s.match(/\b(west|north|east|south|inner)\b/) || [])[1] || null,
+    };
+  }
+
+  const ASK_GOAL = {
+    live:    { label: "to live",          colorBy: "live",   score: a => a.live },
+    family:  { label: "for a family",     colorBy: "family", score: a => a.live_family },
+    invest:  { label: "to invest",        colorBy: "dev",    score: a => 0.45 * a.dev + 0.3 * (a.market.growth_score ?? 50) + 0.25 * (a.pillars.yield.score ?? 50) },
+    develop: { label: "to develop",       colorBy: "dev",    score: a => a.dev },
+    yield:   { label: "for rental yield", colorBy: "yield",  score: a => a.pillars.yield.score ?? 0 },
+  };
+
+  function runAsk() {
+    const q = askInput.value.trim();
+    if (!q) return;
+    const p = parseAsk(q), g = ASK_GOAL[p.goal];
+    const rows = [];
+    for (const [code, a] of entries) {
+      if (a.precinct) continue;
+      const price = p.unit ? a.market.median_unit : a.market.median_house;
+      if (p.budget && (!price || price > p.budget * 1.05)) continue;
+      if (p.safe && (a.pillars.person_safety.score ?? 0) < 65) continue;
+      if (p.train && (a.transit.nearest_station_km ?? 99) > 1.6) continue;
+      if (p.region && !(a.sa4 || "").toLowerCase().includes(p.region)) continue;
+      rows.push([code, a, Math.round(g.score(a) * 10) / 10, price]);
+    }
+    rows.sort((x, y) => y[2] - x[2]);
+    const top = rows.slice(0, 12);
+
+    const parts = [];
+    if (p.budget) parts.push(money(p.budget) + (p.unit ? " (units)" : ""));
+    parts.push(g.label);
+    if (p.safe) parts.push("safe"); if (p.train) parts.push("near a train"); if (p.region) parts.push(p.region);
+    if (!top.length) {
+      askSummary.innerHTML = `No suburbs match <b>${parts.join(" · ")}</b>. Try a higher budget, adding “unit”, or fewer must-haves.`;
+      askResults.innerHTML = "";
+      askSet = null; refresh();
+      return;
+    }
+    askSummary.innerHTML = `<b>${rows.length}</b> suburbs fit <b>${parts.join(" · ")}</b> — top ${top.length} below, highlighted on the map.`;
+    askResults.innerHTML = top.map(([code, a, sc, price], i) => `
+      <div class="ask-row" data-code="${code}">
+        <span class="rk">${i + 1}</span>
+        <span class="ask-nm">${a.name}<small>${a.lga || ""}${price ? " · median " + money(price) : ""}</small></span>
+        <span class="ask-sc" style="color:${rampColor(sc, "balanced")}">${Math.round(sc)}</span>
+      </div>`).join("");
+    askResults.querySelectorAll(".ask-row").forEach(r =>
+      r.onclick = () => { closeAsk(); select(r.dataset.code, true); });
+
+    askSet = new Set(top.map(r => r[0]));
+    activeBest = null; activePreset = null; minScore = 0; setMinSlider();
+    colorBy = g.colorBy;
+    refresh();
+    select(top[0][0], false);
+  }
+
+  const openAsk = () => { askModal.classList.remove("hidden"); askModal.setAttribute("aria-hidden", "false"); askInput.focus(); };
+  const closeAsk = () => { askModal.classList.add("hidden"); askModal.setAttribute("aria-hidden", "true"); };
+  document.getElementById("askBtn").onclick = openAsk;
+  document.getElementById("askBtn2").onclick = openAsk;
+  document.getElementById("closeAsk").onclick = closeAsk;
+  document.getElementById("askGo").onclick = runAsk;
+  askInput.addEventListener("keydown", e => { if (e.key === "Enter") runAsk(); });
+  askModal.onclick = e => { if (e.target === askModal) closeAsk(); };
+  document.querySelectorAll("#askChips button").forEach(b =>
+    b.onclick = () => { askInput.value = b.dataset.q; runAsk(); });
+
   // ---- electricity network overlay (the "AEMO map" layer) ---------------
   let elecLayer = null;
   const kvColor = kv => kv >= 350 ? "#e5484d" : kv >= 200 ? "#f76808" : kv >= 100 ? "#a855f7" : "#0a84ff";
@@ -900,7 +998,7 @@
   document.getElementById("howtoBtn").onclick = () => openGuide("start");
   modal.querySelectorAll("#closeAbout, #closeAbout2").forEach(b => b.onclick = closeGuide);
   modal.onclick = e => { if (e.target === modal) closeGuide(); };
-  document.addEventListener("keydown", e => { if (e.key === "Escape") { closeGuide(); closeSearch(); closeWeights(); } });
+  document.addEventListener("keydown", e => { if (e.key === "Escape") { closeGuide(); closeSearch(); closeWeights(); closeAsk(); } });
 
   // ---- init -------------------------------------------------------------
   setTheme(localStorage.getItem("theme") || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"));
