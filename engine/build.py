@@ -166,6 +166,14 @@ def build() -> None:
         }
     scored = score.compute_scores(records)
 
+    # Explanation prose ships in a separate lazy-loaded file so the boot payload
+    # stays small. Infra prose is dropped — the UI no longer displays it.
+    expl = {}
+    for code, area in scored.items():
+        area.pop("explanation_infra", None)
+        e = {k: area.pop(f"explanation_{k}", None) for k in ("live", "dev", "invest")}
+        expl[code] = {k: v for k, v in e.items() if v}
+
     payload = {
         "city": config.GCC_NAME,
         "generated": dt.date.today().isoformat(),
@@ -186,6 +194,9 @@ def build() -> None:
     out = config.PUBLIC_DATA / "scores.json"
     out.write_text(json.dumps(payload, separators=(",", ":")), encoding="utf-8")
     print(f"  wrote {out.name}: {len(scored)} areas, {out.stat().st_size/1e6:.2f} MB")
+    expl_out = config.PUBLIC_DATA / "explanations.json"
+    expl_out.write_text(json.dumps(expl, separators=(",", ":")), encoding="utf-8")
+    print(f"  wrote {expl_out.name}: {len(expl)} areas, {expl_out.stat().st_size/1e6:.2f} MB")
 
 
 if __name__ == "__main__":  # pragma: no cover

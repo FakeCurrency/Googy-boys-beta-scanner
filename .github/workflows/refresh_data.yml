@@ -133,7 +133,12 @@ jobs:
 
       - name: Restore public/data from a previous commit
         if: inputs.restore_sha != ''
-        run: git checkout "${{ inputs.restore_sha }}" -- public/data
+        # rm first: a plain checkout overlays files but never deletes ones the
+        # source commit doesn't have, which would mix data generations (e.g. a
+        # stale explanations.json shadowing restored inline prose).
+        run: |
+          git rm -r -q --ignore-unmatch public/data
+          git checkout "${{ inputs.restore_sha }}" -- public/data
 
       - name: Commit & push refreshed data
         run: |
@@ -147,8 +152,9 @@ jobs:
             git pull --rebase origin main
             git push origin main
             # Pushes made with GITHUB_TOKEN do not trigger other workflows,
-            # so kick the Pages deploy explicitly.
+            # so kick the Pages deploy and the frontend smoke test explicitly.
             gh workflow run pages.yml --ref main
+            gh workflow run frontend_tests.yml --ref main
           fi
         env:
           GH_TOKEN: ${{ github.token }}

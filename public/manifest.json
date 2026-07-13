@@ -1,14 +1,24 @@
 {
-  "name": "Melbourne Property — suburb scores",
+  "name": "Melbourne Property \u2014 suburb scores",
   "short_name": "Melb Property",
   "description": "Every Greater Melbourne suburb scored for liveability and development potential from public government data.",
   "start_url": ".",
   "scope": ".",
   "display": "standalone",
-  "background_color": "#1c1c1e",
-  "theme_color": "#1c1c1e",
+  "background_color": "#f2f2f7",
+  "theme_color": "#f2f2f7",
   "icons": [
-    { "src": "favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
-    { "src": "apple-touch-icon.png", "sizes": "180x180", "type": "image/png", "purpose": "any maskable" }
+    {
+      "src": "favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
   ]
 }

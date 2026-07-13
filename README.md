@@ -18,7 +18,7 @@ answers plain-English queries from the data (“$700k family home near a train�
 with stamp-duty estimates), compare **two or three** suburbs side-by-side with price-history
 sparklines, a **shortlist** (starred suburbs outlined on the map, saved locally), search by suburb /
 **postcode** / street address, fuzzy typo-tolerant matching, shareable URLs, custom score weights,
-train-station + electricity overlays, a colour-blind-safe palette, grade-trend arrows between data
+a train-station overlay, a colour-blind-safe palette, grade-trend arrows between data
 refreshes, offline support (PWA + service worker) and an iOS-style light/dark interface.
 
 > General information only — not financial or planning advice.
@@ -31,7 +31,7 @@ keys, no backend. Pure-Python dependencies only (`requests`, `openpyxl`, `pyshp`
 cleanly even on Python 3.14.
 
 ```
-melb-scorer/
+melbourne-property/
   engine/
     config.py          city, score weights, grade cut-offs        <- tune here
     fetch.py           cached downloads + ArcGIS query helper
@@ -48,14 +48,16 @@ melb-scorer/
       zoning.py        VicPlan zones + Heritage Overlay sampled per SA2
       electricity.py   Geoscience Australia transmission network
   public/              the deployed static site (Leaflet map, scorecard, sliders)
-    data/ melbourne.geojson  scores.json  stations.geojson  electricity.geojson
+    data/ melbourne.geojson  scores.json  explanations.json  stations.geojson  electricity.geojson
+  scripts/             double-click launchers: .bat (Windows) + .sh (macOS/Linux)
   data_raw/            cached source downloads (gitignored)
 ```
 
 ## Run it
 
-Double-click **`Start Melbourne Property.bat`** (serves the site at http://localhost:8766) and
-**`Refresh Data.bat`** to rebuild. Or from a terminal:
+On Windows, double-click **`scripts/Start Melbourne Property.bat`** (serves the site at
+http://localhost:8766) and **`scripts/Refresh Data.bat`** to rebuild. On macOS/Linux, run
+**`scripts/start.sh`** and **`scripts/refresh-data.sh`** instead. Or from a terminal:
 
 ```bash
 python -m venv .venv
@@ -105,8 +107,9 @@ social housing and density are inverted), then blended with the weights in `engi
   units dominate) + 7% renter turnover + 5% low density + **5% heritage-free** + **5% hazard-free**.
   Two percentile-stretched **sub-lenses** ship alongside: `dev_green` (Greenfield: UGZ corridors)
   and `dev_infill` (Infill: upzoned + station-centred established suburbs). The scorecard's
-  **Market & Price**, **Planning, Zoning & Hazards**, **Trains & Schools** and **Infrastructure &
-  Electricity** blocks lead in Invest/Develop modes; toggles overlay stations and transmission lines.
+  **Market & Price**, **Planning, Zoning & Hazards** and **Trains & Schools** blocks lead in
+  Invest/Develop modes; a toggle overlays train stations. (Electricity-grid support still feeds
+  the score but no longer has its own display surfaces.)
 - **Overall** = `slider × Liveability + (1 − slider) × Development`. Liveability and Development are
   re-ranked 0–100 across all SA2s; letter grades are tiers of the default-blend Overall (A+ = top
   ~10%). Station/school distances are measured from **residentially-zoned sample points**, missing
@@ -140,7 +143,8 @@ suburbs. The site is fully functional without it — see `cloudflare-worker/READ
 ## Roadmap
 
 - **P2** Property prices & growth (Victorian Valuer-General) — ✅ **done**
-- **P3** Electricity network (Geoscience Australia) — map overlay — ✅ **done**
+- **P3** Electricity network (Geoscience Australia) — grid-support scoring — ✅ **done** (the map
+  overlay + scorecard surfaces were later removed to simplify the UI)
 - **P4** Suburb-level crime, rents/yields, stations, schools, **VicPlan zoning + Heritage Overlay**,
   compare mode, address search, shareable URLs — ✅ **done**
 - **P5** Flood (LSIO/SBO/FO) + bushfire (BMO) overlays, ERP 2025 populations, Greenfield/Infill

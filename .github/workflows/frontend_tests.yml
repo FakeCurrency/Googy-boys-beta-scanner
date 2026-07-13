@@ -1,0 +1,42 @@
+name: Frontend smoke test
+
+# Boots the static site in headless Chromium and walks the core flows
+# (boot skeleton, top list, scorecard, search) via tests/frontend/smoke.js.
+# Playwright is installed ad hoc on the runner — nothing gets committed.
+
+on:
+  pull_request:
+    paths:
+      - "public/**"
+      - "tests/frontend/**"
+  push:
+    branches: [main]
+    paths:
+      - "public/**"
+      - "tests/frontend/**"
+  # kicked explicitly by refresh_data.yml — GITHUB_TOKEN pushes don't fire
+  # push triggers, so the monthly data commit wouldn't get smoke-tested otherwise
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Playwright + Chromium
+        run: |
+          npm init -y
+          npm i playwright
+          npx playwright install --with-deps chromium
+
+      - name: Serve the site and run the smoke test
+        run: |
+          python3 -m http.server 8766 -d public &
+          sleep 2
+          node tests/frontend/smoke.js

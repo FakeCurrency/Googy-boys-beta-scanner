@@ -1,12 +1,15 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="dark">
+<html lang="en" data-theme="light">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.basemaps.cartocdn.com; connect-src 'self' https://nominatim.openstreetmap.org; manifest-src 'self'; worker-src 'self'; base-uri 'self'; form-action 'self'" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-4L7lSyW5Ya1klsshAk3HeZdMay3zRZqZLUN2bDQHowA='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.basemaps.cartocdn.com; connect-src 'self' https://nominatim.openstreetmap.org; manifest-src 'self'; worker-src 'self'; base-uri 'self'; form-action 'self'" />
 <title>Melbourne Property — live, invest &amp; develop scores by suburb</title>
 <meta name="description" content="Every Greater Melbourne suburb scored for liveability and development potential — crime, prices, rents, yield, schools, trains, zoning and hazards from public government data." />
-<meta name="theme-color" content="#1c1c1e" />
+<meta name="theme-color" content="#f2f2f7" />
+<!-- restore a saved dark theme before first paint (hash allowed in the CSP above,
+     so returning dark-mode users don't get a light boot-screen flash) -->
+<script>try{document.documentElement.dataset.theme=localStorage.getItem("theme")||"light"}catch(e){}</script>
 <meta property="og:title" content="Melbourne Property — suburb scores" />
 <meta property="og:description" content="361 Melbourne suburbs scored for living and investing: safety, prices, yield, schools, trains, zoning. Free, government data." />
 <meta property="og:type" content="website" />
@@ -16,7 +19,7 @@
 <link rel="apple-touch-icon" href="apple-touch-icon.png" />
 <link rel="manifest" href="manifest.json" />
 <link rel="stylesheet" href="vendor/leaflet/leaflet.css" />
-<link rel="stylesheet" href="css/app.css?v=20" />
+<link rel="stylesheet" href="css/app.css?v=22" />
 </head>
 <body>
 
@@ -73,10 +76,10 @@
     <p class="best-cap">Highlights the <b>top ~20</b> for each goal.</p>
   </div>
 
-  <div class="dock-sec">
-    <div class="sec-h">One-click presets</div>
+  <details class="dock-sec" id="presetsBox">
+    <summary class="sec-h">One-click presets</summary>
     <div class="presets" id="presetRow"></div>
-  </div>
+  </details>
 
   <div class="dock-sec">
     <div class="blend-row"><span>Liveability</span>
@@ -89,8 +92,6 @@
 
     <label class="ctl ctl-min">Hide weaker areas below <b id="minVal">0</b>
       <input type="range" id="minScore" min="0" max="90" value="0" title="Fade areas below this score" /></label>
-    <label class="elec-toggle"><input type="checkbox" id="elecToggle" />
-      <svg class="ic ic-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" aria-hidden="true"><path d="M13 3 5 13h5l-1 8 8-11h-5z"/></svg> Show electricity network</label>
     <label class="elec-toggle"><input type="checkbox" id="stnToggle" />
       <svg class="ic ic-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="3" width="12" height="13" rx="2.5"/><path d="M6 10h12M9.5 16 7 20M14.5 16 17 20"/></svg> Show train stations</label>
     <label class="elec-toggle"><input type="checkbox" id="cbToggle" />
@@ -160,7 +161,7 @@
 
 <div id="legend" class="legend glass"></div>
 <div id="hovercard" class="hovercard hidden"></div>
-<button id="howtoBtn" hidden></button>
+<div id="srlive" class="sr-only" role="status" aria-live="polite"></div>
 
 <div id="aboutModal" class="modal hidden" aria-hidden="true">
   <div class="modal-content about-modal glass">
@@ -196,7 +197,7 @@
           <li>Search accepts suburb names, <strong>postcodes</strong> (e.g. 3150) and street addresses.</li>
           <li>Colour the map by <strong>Greenfield</strong> or <strong>Infill</strong> to separate the two development stories.</li>
           <li><strong>Customise weights</strong> rebuilds every score with your own priorities.</li>
-          <li>Toggle the electricity network or train stations on the map.</li>
+          <li>Toggle train stations on the map.</li>
           <li>Copy the URL any time — it restores your exact view, suburb, comparison and custom weights.</li>
         </ul>
       </div>
@@ -213,9 +214,8 @@
       <h4>Key controls</h4>
       <ul>
         <li><strong>Slider</strong>: how much weight you give Liveability vs Development.</li>
-        <li><strong>Colour by</strong>: what the map colours represent (Overall, Safety, Growth, Grid…).</li>
+        <li><strong>Colour by</strong>: what the map colours represent (Overall, Safety, Growth, Yield…).</li>
         <li><strong>Hide weaker areas</strong>: focus only on stronger suburbs.</li>
-        <li><strong>Electricity overlay</strong>: show major transmission lines and substations.</li>
       </ul>
     </div>
 
@@ -263,7 +263,6 @@
       <div class="glossary">
         <div><strong>Very safe / Safe</strong> — Low rates of personal crime</div>
         <div><strong>Growth corridor</strong> — Strong recent price growth + redevelopment headroom</div>
-        <div><strong>Grid-ready</strong> — Close to major transmission lines and multiple substations</div>
         <div><strong>Redevelopment headroom</strong> — High share of detached houses on larger blocks</div>
         <div><strong>Affordable upside</strong> — Relatively lower prices with growth momentum</div>
         <div><strong>Premium market</strong> — High prices, typically established or blue-chip areas</div>
@@ -278,6 +277,7 @@
 
     <div id="tab-sources" class="about-panel">
       <h4>Where the data comes from</h4>
+      <p class="small" id="freshline"></p>
       <div class="source-block">
         <h5>Electricity Infrastructure</h5>
         <p><strong>Geoscience Australia</strong> — National Electricity Transmission Lines and Substations (2024).
@@ -343,7 +343,7 @@
 </div>
 
 <script src="vendor/leaflet/leaflet.js"></script>
-<script src="js/app.js?v=20"></script>
+<script src="js/app.js?v=22"></script>
 <!-- Analytics (disabled). To enable privacy-friendly counts with no cookies:
      1. create a free goatcounter.com account (or self-host Plausible),
      2. uncomment the line below with your code,
