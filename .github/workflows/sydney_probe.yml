@@ -1,0 +1,91 @@
+name: Sydney Probe
+
+# First Sydney milestone + NSW source recon, run in CI where the network is
+# open (the sandboxed dev environment can't reach government portals — see
+# docs/AUSTRALIA.md).
+#   1. Builds Greater Sydney boundaries from the national ABS SA2 shapefile
+#      (python -m engine.run --city sydney --geo-only) and commits them back
+#      to the branch the workflow ran on. This does NOT list Sydney in
+#      cities.json — the site ignores the file until a full build exists.
+#   2. Recons each candidate NSW data source (status, content type, size,
+#      first bytes) so the NSW adapters get written against facts.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Restore raw-data cache (ABS shapefile from the monthly refresh)
+        uses: actions/cache@v4
+        with:
+          path: data_raw
+          key: data-raw-probe-${{ github.run_id }}
+          restore-keys: |
+            data-raw-
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Build Greater Sydney boundaries (--geo-only)
+        run: |
+          python -m engine.run --city sydney --geo-only
+          python - <<'PY'
+          import json
+          fc = json.load(open("public/data/sydney/boundaries.geojson"))
+          sa4 = sorted({f["properties"]["sa4_name"] for f in fc["features"]})
+          print(f"Sydney SA2 features: {len(fc['features'])}")
+          print("SA4s:")
+          for s in sa4: print("  -", s)
+          PY
+
+      - name: Recon NSW sources
+        continue-on-error: true
+        run: |
+          probe() {
+            echo "===== $1"
+            curl -sS -L -m 30 -o /tmp/probe \
+              -w "status=%{http_code} type=%{content_type} bytes=%{size_download} final=%{url_effective}\n" \
+              -A "Mozilla/5.0 (compatible; melbourne-property-recon)" "$1" || echo "REQUEST FAILED"
+            head -c 400 /tmp/probe | tr -d '\0'; echo; echo
+          }
+          # crime (BOCSAR)
+          probe "https://bocsar.nsw.gov.au/statistics-dashboards/open-datasets.html"
+          probe "https://data.nsw.gov.au/data/api/3/action/package_search?q=bocsar+criminal+incidents&rows=5"
+          # prices (NSW Valuer General bulk property sales)
+          probe "https://valuation.property.nsw.gov.au/embed/propertySalesInformation"
+          probe "https://data.nsw.gov.au/data/api/3/action/package_search?q=property+sales+information&rows=5"
+          # rents (rental bond lodgements)
+          probe "https://data.nsw.gov.au/data/api/3/action/package_search?q=rental+bond+lodgement&rows=5"
+          # zoning (EPI Land Zoning via NSW spatial services)
+          probe "https://portal.spatial.nsw.gov.au/server/rest/services?f=json"
+          probe "https://mapprod3.environment.nsw.gov.au/arcgis/rest/services?f=json"
+          probe "https://data.nsw.gov.au/data/api/3/action/package_search?q=land+zoning+epi&rows=5"
+          # transport (train station entries/exits)
+          probe "https://opendata.transport.nsw.gov.au/data/api/3/action/package_search?q=train+station+entries&rows=5"
+          # schools (national — ACARA)
+          probe "https://www.acara.edu.au/contact-us/acara-data-access"
+
+      - name: Commit Sydney boundaries back to this branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add public/data/sydney
+          if git diff --cached --quiet; then
+            echo "No boundary changes — nothing to commit."
+          else
+            git commit -m "Sydney boundaries: ABS SA2 via CI probe (--city sydney --geo-only)"
+            git pull --rebase origin "${{ github.ref_name }}"
+            git push origin "HEAD:${{ github.ref_name }}"
+          fi
