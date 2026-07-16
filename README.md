@@ -1,8 +1,12 @@
 # Melbourne Property — live, invest & develop scores by suburb
 
-One app that helps with three Melbourne decisions — *where's safer to live/rent*, *where an
+**Now two cities: Melbourne and Sydney** — a topbar switcher (or `#city=sydney` in the URL) swaps
+the whole dataset; every score is a percentile within its own city. Sydney v1 ships all layers
+except weekly rents (see `docs/AUSTRALIA.md` for the why and the roadmap to other capitals).
+
+One app that helps with three decisions — *where's safer to live/rent*, *where an
 investment stacks up*, and *where there's room to add value/develop* — by ranking every **Greater
-Melbourne suburb** with two 0–100 scores plus a blended overall:
+Melbourne / Greater Sydney suburb** with two 0–100 scores plus a blended overall:
 
 - **Liveability** — *can you live/rent here safely and conveniently?* **Personal safety leads**
   (suburb-level crimes against the person weighted far above property crime), plus SEIFA advantage,
@@ -63,7 +67,7 @@ http://localhost:8766) and **`scripts/Refresh Data.bat`** to rebuild. On macOS/L
 ```bash
 python -m venv .venv
 .venv\Scripts\python -m pip install -r requirements.txt
-.venv\Scripts\python -m engine.run          # build public/data/melbourne/* (--city sydney once its adapters exist)
+.venv\Scripts\python -m engine.run          # build public/data/melbourne/*  (--city sydney for Sydney)
 .venv\Scripts\python -m http.server 8766 --directory public
 ```
 
@@ -91,7 +95,7 @@ data-coverage line so you can see exactly what a suburb's scores are based on.
 
 ## Scoring
 
-Each input is converted to a **percentile (0–100) within Greater Melbourne** (higher = better; crime,
+Each input is converted to a **percentile (0–100) within its own city** (higher = better; crime,
 social housing and density are inverted), then blended with the weights in `engine/config.py`:
 
 - **Liveability (base — Balanced/Invest)** = 33% personal safety + 25% SEIFA IRSAD +

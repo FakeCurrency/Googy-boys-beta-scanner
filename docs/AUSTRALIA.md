@@ -38,7 +38,7 @@ and the app derives the rest from data:
 - "Greater Melbourne" copy in tooltips/toasts uses `data.city`.
 
 Also built since: the multi-city plumbing itself. `engine/config.py` holds a
-`CITIES` registry (Melbourne ready; Sydney profiled with `ready: False`),
+`CITIES` registry (Melbourne and Sydney both `ready: True`),
 `python -m engine.run --city <slug>` switches profiles (`--geo-only` already
 works for any city since ABS boundaries are national; a full build refuses
 until the state's adapters exist), every output goes to
@@ -130,23 +130,27 @@ The station-access scoring is already source-agnostic — it needs
 
 ### 5. Stamp duty (frontend)
 
-`app.js` now keys duty tables by `data.state`; add NSW/QLD/WA/SA/TAS/ACT/NT
-general-rate brackets (each ~6 lines) as each city ships. No entry = the Ask
-box simply omits the estimate.
+`app.js` now keys duty tables by `data.state`; VIC and NSW are in. Add
+QLD/WA/SA/TAS/ACT/NT general-rate brackets (each ~6 lines) as each city
+ships. No entry = the Ask box simply omits the estimate.
 
 ## Architecture status
 
 1. ✅ `engine/config.py`: `CITIES` registry + `set_city()`;
-   `python -m engine.run --city sydney` (blocked until adapters exist,
-   `--geo-only` allowed). Zone groupings still module-level Vic sets — move
-   into the profile with the first non-Vic zoning adapter.
+   `python -m engine.run --city <slug>` gated on `ready` (`--geo-only`
+   always allowed). Per-state source dispatch lives in
+   `engine/sources/__init__.py::for_state()` (VIC = package level,
+   NSW = `engine/sources/nsw/`); zone-code groupings live in each state's
+   zoning adapter.
 2. ✅ Output per city: `public/data/<slug>/{scores,explanations,prev-scores}.json`,
    `boundaries.geojson`, `stations.geojson` + `public/data/cities.json`
    (maintained by `build()`; a city appears only once its data exists).
 3. ✅ Frontend: city switcher in the topbar (hidden with one city), `city`
    hash param, per-device memory; everything else reads the loaded payload.
-4. ⬜ `refresh_data.yml`: Melbourne-only for now (paths per-city already);
-   becomes a matrix over ready cities when there are two.
+   The CI smoke test switches cities when the manifest lists more than one.
+4. ✅ `refresh_data.yml`: snapshots, builds and guards every city listed in
+   `public/data/cities.json` (a city joins the monthly refresh the moment its
+   first dataset is committed).
 5. Payload budget: each city stays ~1–1.5 MB gzipped; nothing national ever
    loads at boot.
 
@@ -155,13 +159,26 @@ box simply omits the estimate.
 1. **Done:** city profile in config, `state`/`regions` in the payload,
    data-derived map view/geocoder box, per-state duty table.
 1b. **Done:** the full multi-city plumbing — per-city data dirs, cities.json,
-   `--city` builds, frontend switcher. Sydney's profile (GCC, NSW regions
-   map) is registered with `ready: False`.
-2. **Sydney data** — the NSW source adapters: BOCSAR crime, NSW VG prices,
-   bond-board rents, planning portal zoning (needs the NSW zone-code
-   groupings), TfNSW stations. NOTE: state portals are unreachable from the
-   sandboxed dev environment — build/test the adapters on a machine with open
-   network or in GitHub Actions, where the monthly refresh already runs.
+   `--city` builds, frontend switcher.
+2. **Done — Sydney is live.** Six NSW adapters built against CI recon
+   (the sandboxed dev environment can't reach state portals, so adapters are
+   developed via `sydney_probe.yml` dispatch on a branch; runs commit the
+   built dataset back). Coverage of the 373 Greater Sydney SA2s:
+   - crime: BOCSAR suburb dataset, person/property split + 4-yr trend — 358
+   - prices: VG bulk PSI 2018–2024 via Wayback (direct is WAF-403) — 358,
+     with yearly medians, 12m/3yr stats and sparklines
+   - zoning: ePlanning EPI Land Zoning + Heritage layers, NSW groupings
+     (R2 low-density plays the Vic NRZ role, no UGZ analogue) — 373
+   - transport: TfNSW station locations + entry/exit patronage — 373
+   - schools: DoE master dataset (government schools) — 373
+   - **rents: none in v1.** Fair Trading's bond workbooks sit under
+     `/sites/default/files/noindex/` behind a JS challenge: direct fetches
+     get challenge HTML with any UA/cookies, and `noindex` means Wayback
+     never archived them. Scores renormalise (rent/yield pills show
+     "no data"). Follow-up: DCJ's quarterly **Rent and Sales Report**
+     publishes median weekly rents by LGA/district — a future
+     `nsw/rents.py` source, or a headed-browser fetch in CI.
+3. **Brisbane, Perth, Adelaide** — one at a time; zoning mapping is the slog.
 3. **Brisbane, Perth, Adelaide** — one at a time; zoning mapping is the slog.
 4. **Hobart, Darwin, Canberra** — small SA2 counts; accept LGA-level crime.
 5. Regional (non-GCC) Australia only after capitals — needs a different

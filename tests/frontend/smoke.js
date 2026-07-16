@@ -78,6 +78,23 @@ const fail = msg => { failures++; console.error(`FAIL  ${msg}`); };
     if (res) pass(`search "Carlton" returned ${(await page.$$("#results .res")).length} result(s)`);
     else fail('search "Carlton" returned no results');
 
+    // (e) multi-city: when the manifest lists 2+ cities the switcher is shown —
+    // switch to the second city and make sure its dataset boots and ranks
+    const citySel = await page.$("#citySwitch");
+    if (citySel && await citySel.isVisible()) {
+      const other = await page.$$eval("#citySwitch option", os => os[1] && os[1].value);
+      await Promise.all([
+        page.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 15000 }).catch(() => null),
+        page.selectOption("#citySwitch", other),
+      ]);
+      await page.waitForSelector("#boot.done", { timeout: 20000 });
+      const cityRows = await page.$$("#topList li[data-code]");
+      if (cityRows.length >= 5) pass(`city switch to "${other}" ranks ${cityRows.length} suburbs`);
+      else fail(`city switch to "${other}" ranked ${cityRows.length} suburbs (expected >= 5)`);
+    } else {
+      console.log("      (single-city manifest — switcher check skipped)");
+    }
+
     // late errors: anything the clicks/typing above threw
     if (pageErrors.length > errorsAtLoad) {
       const late = pageErrors.slice(errorsAtLoad);

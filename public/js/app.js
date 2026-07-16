@@ -8,7 +8,7 @@
   // Versioned data URLs: keeps code + data cache-coherent on GitHub Pages
   // (bump together with the ?v= asset versions in index.html; the deploy
   // workflow overwrites both with the run number).
-  const DATA_V = "24";
+  const DATA_V = "25";
   const boot = document.getElementById("boot");
   const fetchJson = url => fetch(url).then(r => {
     if (!r.ok) throw new Error(url.split("?")[0] + " → HTTP " + r.status);
@@ -303,7 +303,10 @@
         ${rentLine ? `<div class="market-sub">${rentLine}</div>` : ""}</div>`;
     const up = (m.house_12m ?? 0) >= 0;
     return `<div class="market${prominent ? "" : " mini"}">
-      <div class="market-h">Market &amp; Price <span class="src">VG ${m.house_year} · DFFH ${m.rent_quarter || ""}</span></div>
+      <div class="market-h">Market &amp; Price <span class="src">${[
+        m.house_year ? `VG ${m.house_year}` : "",
+        m.rent_quarter ? `${data.state === "VIC" ? "DFFH" : "Bonds"} ${m.rent_quarter}` : "",
+      ].filter(Boolean).join(" · ")}</span></div>
       <div class="market-row">
         <div class="price"><span class="ml">Median house</span><span class="pv-big">${money(m.median_house)}</span></div>
         ${spark(m.house_series)}
@@ -1136,6 +1139,20 @@
         if (v <= 960000) return 2870 + (v - 130000) * 0.06;
         if (v <= 2000000) return v * 0.055;
         return 110000 + (v - 2000000) * 0.065;
+      },
+    },
+    // NSW transfer duty, FY 2024-25 thresholds (revenue.nsw.gov.au — indexed
+    // each 1 July; premium 7% band applies above ~$3.64M residential).
+    NSW: {
+      name: "NSW", vintage: "FY 2024-25",
+      calc: v => {
+        if (v <= 17000) return v * 0.0125;
+        if (v <= 36000) return 212 + (v - 17000) * 0.015;
+        if (v <= 97000) return 497 + (v - 36000) * 0.0175;
+        if (v <= 364000) return 1564 + (v - 97000) * 0.035;
+        if (v <= 1212000) return 10909 + (v - 364000) * 0.045;
+        if (v <= 3636000) return 49069 + (v - 1212000) * 0.055;
+        return 182389 + (v - 3636000) * 0.07;
       },
     },
   };
