@@ -50,32 +50,9 @@ jobs:
           for s in sa4: print("  -", s)
           PY
 
-      - name: Recon NSW sources
+      - name: Deep NSW source recon (CKAN resources, CSV samples, ArcGIS zoning layer)
         continue-on-error: true
-        run: |
-          probe() {
-            echo "===== $1"
-            curl -sS -L -m 30 -o /tmp/probe \
-              -w "status=%{http_code} type=%{content_type} bytes=%{size_download} final=%{url_effective}\n" \
-              -A "Mozilla/5.0 (compatible; melbourne-property-recon)" "$1" || echo "REQUEST FAILED"
-            head -c 400 /tmp/probe | tr -d '\0'; echo; echo
-          }
-          # crime (BOCSAR)
-          probe "https://bocsar.nsw.gov.au/statistics-dashboards/open-datasets.html"
-          probe "https://data.nsw.gov.au/data/api/3/action/package_search?q=bocsar+criminal+incidents&rows=5"
-          # prices (NSW Valuer General bulk property sales)
-          probe "https://valuation.property.nsw.gov.au/embed/propertySalesInformation"
-          probe "https://data.nsw.gov.au/data/api/3/action/package_search?q=property+sales+information&rows=5"
-          # rents (rental bond lodgements)
-          probe "https://data.nsw.gov.au/data/api/3/action/package_search?q=rental+bond+lodgement&rows=5"
-          # zoning (EPI Land Zoning via NSW spatial services)
-          probe "https://portal.spatial.nsw.gov.au/server/rest/services?f=json"
-          probe "https://mapprod3.environment.nsw.gov.au/arcgis/rest/services?f=json"
-          probe "https://data.nsw.gov.au/data/api/3/action/package_search?q=land+zoning+epi&rows=5"
-          # transport (train station entries/exits)
-          probe "https://opendata.transport.nsw.gov.au/data/api/3/action/package_search?q=train+station+entries&rows=5"
-          # schools (national — ACARA)
-          probe "https://www.acara.edu.au/contact-us/acara-data-access"
+        run: python -m engine.tools.nsw_recon
 
       - name: Commit Sydney boundaries back to this branch
         run: |

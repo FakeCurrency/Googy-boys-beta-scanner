@@ -26,7 +26,7 @@ ERP_NEXT_URL = ("https://www.abs.gov.au/statistics/people/population/regional-po
 
 
 def get_erp() -> dict[str, dict]:
-    """{sa2_code: {"erp": latest ERP, "erp_year": June year}} for Victorian SA2s."""
+    """{sa2_code: {"erp": latest ERP, "erp_year": June year}} — the ABS workbook is national, keyed by SA2 code."""
     from ..fetch import fresh
     cache = config.DATA_RAW / "abs_erp_sa2.json"
     if fresh(cache, 90):
