@@ -29,6 +29,10 @@ CITIES = {
         "gcc": "Greater Melbourne",   # matches GCC_NAME21 in the ABS shapefile
         "state": "Victoria", "state_code": "VIC",
         "ready": True,                # all source adapters exist
+        # geographic envelope (lon0, lat0, lon1, lat1) used to clip national
+        # point/line datasets, and the local equirectangular projection origin
+        "bbox": (144.2, -38.7, 145.9, -37.1),
+        "origin": (145.0, -37.8),
         "regions": {
             "inner west": ["Melbourne - West"],
             "inner north": ["Melbourne - Inner"],
@@ -57,6 +61,8 @@ CITIES = {
         "gcc": "Greater Sydney",
         "state": "New South Wales", "state_code": "NSW",
         "ready": False,
+        "bbox": (149.9, -34.6, 151.8, -32.8),   # incl. Central Coast + Blue Mountains foothills
+        "origin": (151.0, -33.8),
         "regions": {
             "eastern suburbs": ["Sydney - Eastern Suburbs"],
             "northern beaches": ["Sydney - Northern Beaches"],
@@ -89,18 +95,22 @@ GCC_NAME = CITY["gcc"]
 STATE_NAME = CITY["state"]
 STATE_CODE = CITY["state_code"]
 CITY_REGIONS = CITY["regions"]
+CITY_BBOX = CITY["bbox"]
+CITY_ORIGIN = CITY["origin"]
 CITY_DATA = PUBLIC / "data" / CITY["slug"]   # this city's output directory
 BOUNDARIES_NAME = "boundaries.geojson"
 
 
 def set_city(slug: str) -> None:
     """Point the whole engine at another city profile."""
-    global CITY, GCC_NAME, STATE_NAME, STATE_CODE, CITY_REGIONS, CITY_DATA
+    global CITY, GCC_NAME, STATE_NAME, STATE_CODE, CITY_REGIONS, CITY_BBOX, CITY_ORIGIN, CITY_DATA
     CITY = CITIES[slug]
     GCC_NAME = CITY["gcc"]
     STATE_NAME = CITY["state"]
     STATE_CODE = CITY["state_code"]
     CITY_REGIONS = CITY["regions"]
+    CITY_BBOX = CITY["bbox"]
+    CITY_ORIGIN = CITY["origin"]
     CITY_DATA = PUBLIC / "data" / CITY["slug"]
 
 # --- Data sources (all free, public) --------------------------------------

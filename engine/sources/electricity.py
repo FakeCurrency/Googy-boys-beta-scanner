@@ -28,30 +28,33 @@ from .. import config
 from ..geo import _dp  # reuse the pure-Python Douglas-Peucker
 
 ELEC = "https://services.ga.gov.au/gis/rest/services/National_Electricity_Infrastructure/MapServer"
-ENVELOPE = {"xmin": 144.2, "ymin": -38.7, "xmax": 145.8, "ymax": -37.2,
-            "spatialReference": {"wkid": 4326}}
 SUBSTATIONS_LAYER, LINES_LAYER = 0, 2
 BUFFER_KM = 10.0
 
-# Local equirectangular projection origin (Greater Melbourne) -> kilometres.
-_LON0, _LAT0 = 145.0, -37.8
-_KX = 111.320 * math.cos(math.radians(_LAT0))   # km per degree longitude
-_KY = 110.574                                    # km per degree latitude
+
+def _envelope() -> dict:
+    """The active city's clip envelope (the GA dataset is national)."""
+    x0, y0, x1, y1 = config.CITY_BBOX
+    return {"xmin": x0, "ymin": y0, "xmax": x1, "ymax": y1,
+            "spatialReference": {"wkid": 4326}}
 
 
 def _to_km(lon, lat):
-    return (lon - _LON0) * _KX, (lat - _LAT0) * _KY
+    # local equirectangular projection around the active city's origin -> km
+    lon0, lat0 = config.CITY_ORIGIN
+    return ((lon - lon0) * 111.320 * math.cos(math.radians(lat0)),
+            (lat - lat0) * 110.574)
 
 
 def _fetch_layer(lid: int, out_fields: str, fname: str) -> list[dict]:
-    """Query a GA MapServer layer within the Melbourne envelope as GeoJSON (cached)."""
-    path = config.DATA_RAW / fname
+    """Query a GA MapServer layer within the city envelope as GeoJSON (cached per city)."""
+    path = config.DATA_RAW / f"{config.CITY['slug']}_{fname}"
     if path.exists() and path.stat().st_size > 0:
         print(f"  cached  {fname}")
         return json.loads(path.read_text(encoding="utf-8"))["features"]
     print(f"  querying GA electricity {fname} ...")
     params = {
-        "geometry": json.dumps(ENVELOPE), "geometryType": "esriGeometryEnvelope",
+        "geometry": json.dumps(_envelope()), "geometryType": "esriGeometryEnvelope",
         "inSR": 4326, "spatialRel": "esriSpatialRelIntersects", "where": "1=1",
         "outFields": out_fields, "returnGeometry": "true", "outSR": 4326,
         "resultRecordCount": 5000, "f": "geojson",

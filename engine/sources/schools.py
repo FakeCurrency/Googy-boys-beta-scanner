@@ -17,21 +17,19 @@ from ..fetch import fetch
 
 SCHOOLS_URL = ("https://www.education.vic.gov.au/Documents/about/research/datavic/"
                "dv402-SchoolLocations2025.csv")
-ENVELOPE = (144.2, -38.7, 145.9, -37.1)
 NEAR_KM = 3.0
-
-_LON0, _LAT0 = 145.0, -37.8
-_KX = 111.320 * math.cos(math.radians(_LAT0))
-_KY = 110.574
 
 
 def _to_km(lon, lat):
-    return (lon - _LON0) * _KX, (lat - _LAT0) * _KY
+    # local equirectangular projection around the active city's origin -> km
+    lon0, lat0 = config.CITY_ORIGIN
+    return ((lon - lon0) * 111.320 * math.cos(math.radians(lat0)),
+            (lat - lat0) * 110.574)
 
 
 def _load_schools():
     path = fetch(SCHOOLS_URL, "school_locations.csv")
-    x0, y0, x1, y1 = ENVELOPE
+    x0, y0, x1, y1 = config.CITY_BBOX
     schools = []
     # The department ships this CP1252-encoded; fall back if that changes.
     for enc in ("cp1252", "utf-8-sig"):

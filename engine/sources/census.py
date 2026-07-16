@@ -106,9 +106,11 @@ def get_income() -> dict[str, dict]:
     import zipfile
 
     from ..fetch import fetch
+    # per-state DataPack (the G02 table isn't served nationally by the Atlas)
+    st = config.STATE_CODE
     url = ("https://www.abs.gov.au/census/find-census-data/datapacks/download/"
-           "2021_GCP_SA2_for_VIC_short-header.zip")
-    path = fetch(url, "census_gcp_sa2_vic.zip")
+           f"2021_GCP_SA2_for_{st}_short-header.zip")
+    path = fetch(url, f"census_gcp_sa2_{st.lower()}.zip")
     out = {}
     with zipfile.ZipFile(path) as z:
         g02 = next(n for n in z.namelist() if "G02" in n and n.endswith(".csv"))
