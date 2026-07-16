@@ -128,8 +128,8 @@ def get_infra(points: dict[str, tuple[float, float]]) -> dict[str, dict]:
     """{sa2_code: {nearest_transmission_km, nearest_substation_km, substation_count_10km, nearest_line_kv}}"""
     substations, segments, overlay = _load_network()
     # write the map overlay once
-    config.PUBLIC_DATA.mkdir(parents=True, exist_ok=True)
-    (config.PUBLIC_DATA / "electricity.geojson").write_text(
+    config.CITY_DATA.mkdir(parents=True, exist_ok=True)
+    (config.CITY_DATA / "electricity.geojson").write_text(
         json.dumps(overlay, separators=(",", ":")), encoding="utf-8")
 
     out = {}
@@ -163,9 +163,9 @@ def get_infra(points: dict[str, tuple[float, float]]) -> dict[str, dict]:
 
 if __name__ == "__main__":  # pragma: no cover
     from .. import geo
-    pts = geo.melbourne_sa2_points()
+    pts = geo.sa2_points()
     names = {f["properties"]["sa2_code"]: f["properties"]["sa2_name"]
-             for f in json.loads((config.PUBLIC_DATA / "melbourne.geojson").read_text(encoding="utf-8"))["features"]}
+             for f in json.loads((config.CITY_DATA / config.BOUNDARIES_NAME).read_text(encoding="utf-8"))["features"]}
     infra = get_infra(pts)
     for nm in ("Nunawading", "Tarneit - North", "Toorak", "Cobblebank - Strathtulloh", "Somerton"):
         code = next((c for c, n in names.items() if n == nm), None)

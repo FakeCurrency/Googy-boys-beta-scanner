@@ -156,7 +156,7 @@ def point_in_ring(x: float, y: float, ring: list[tuple[float, float]]) -> bool:
     return inside
 
 
-def melbourne_sa2_points() -> dict[str, tuple[float, float]]:
+def sa2_points() -> dict[str, tuple[float, float]]:
     """{sa2_code: (lon, lat)} representative point for each Greater Melbourne SA2."""
     extract_dir = config.DATA_RAW / "sa2_shp"
     if not extract_dir.exists():
@@ -218,8 +218,8 @@ def build_geojson(force: bool = False) -> Path:
         })
 
     fc = {"type": "FeatureCollection", "features": features}
-    config.PUBLIC_DATA.mkdir(parents=True, exist_ok=True)
-    out = config.PUBLIC_DATA / "melbourne.geojson"
+    config.CITY_DATA.mkdir(parents=True, exist_ok=True)
+    out = config.CITY_DATA / config.BOUNDARIES_NAME
     out.write_text(json.dumps(fc, separators=(",", ":")), encoding="utf-8")
     size_mb = out.stat().st_size / 1e6
     print(f"  wrote {out.name}: {len(features)} SA2s, {size_mb:.2f} MB")

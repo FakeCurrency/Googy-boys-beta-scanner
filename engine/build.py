@@ -25,7 +25,7 @@ SOURCES_NOTE = {
 
 def _load_sa2_index() -> tuple[dict[str, dict], dict[str, dict]]:
     """SA2 code -> name/sa3/sa4 plus code -> geometry from the boundary GeoJSON."""
-    path = config.PUBLIC_DATA / "melbourne.geojson"
+    path = config.CITY_DATA / config.BOUNDARIES_NAME
     if not path.exists():
         geo.build_geojson()
     fc = json.loads(path.read_text(encoding="utf-8"))
@@ -46,7 +46,7 @@ def _yield_pct(weekly_rent, price):
 def build() -> None:
     print("1/9 boundaries"); index, geoms = _load_sa2_index()
     names = {code: m["name"] for code, m in index.items()}
-    points = geo.melbourne_sa2_points()
+    points = geo.sa2_points()
 
     print("2/9 census (SEIFA + housing + demographics + income) + ERP")
     seifa = census.get_seifa()
@@ -192,13 +192,28 @@ def build() -> None:
         "postcodes": postcodes,
         "areas": scored,
     }
-    config.PUBLIC_DATA.mkdir(parents=True, exist_ok=True)
-    out = config.PUBLIC_DATA / "scores.json"
+    config.CITY_DATA.mkdir(parents=True, exist_ok=True)
+    out = config.CITY_DATA / "scores.json"
     out.write_text(json.dumps(payload, separators=(",", ":")), encoding="utf-8")
     print(f"  wrote {out.name}: {len(scored)} areas, {out.stat().st_size/1e6:.2f} MB")
-    expl_out = config.PUBLIC_DATA / "explanations.json"
+    expl_out = config.CITY_DATA / "explanations.json"
     expl_out.write_text(json.dumps(expl, separators=(",", ":")), encoding="utf-8")
     print(f"  wrote {expl_out.name}: {len(expl)} areas, {expl_out.stat().st_size/1e6:.2f} MB")
+    _update_manifest()
+
+
+def _update_manifest() -> None:
+    """Register this city in public/data/cities.json (the frontend's city list).
+    A city only appears once its data has actually been built."""
+    mpath = config.PUBLIC_DATA / "cities.json"
+    manifest = (json.loads(mpath.read_text(encoding="utf-8")) if mpath.exists()
+                else {"default": config.CITY["slug"], "cities": []})
+    entry = {"slug": config.CITY["slug"], "name": config.CITY["name"], "label": config.GCC_NAME}
+    manifest["cities"] = sorted(
+        [c for c in manifest["cities"] if c["slug"] != entry["slug"]] + [entry],
+        key=lambda c: c["slug"])
+    mpath.write_text(json.dumps(manifest, separators=(",", ":")), encoding="utf-8")
+    print(f"  wrote cities.json: {[c['slug'] for c in manifest['cities']]}")
 
 
 if __name__ == "__main__":  # pragma: no cover

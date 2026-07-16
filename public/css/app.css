@@ -74,6 +74,10 @@ body{font:15px/1.45 var(--sans);color:var(--ink);background:var(--map-bg);
 .tb-btn{border:0;background:var(--tint);color:var(--accent);border-radius:100px;
   padding:8px 15px;font-weight:600;font-size:14px;cursor:pointer;font-family:var(--sans);letter-spacing:-.2px}
 .tb-btn:hover{filter:brightness(1.05)}
+#citySwitch{border:0;background:var(--fill3);color:var(--ink);border-radius:100px;
+  padding:7px 12px;font:600 14px var(--sans);cursor:pointer;letter-spacing:-.2px;
+  -webkit-appearance:none;appearance:none}
+#citySwitch:hover{background:var(--fill2)}
 .tb-search{position:relative}
 .search-tog{display:none}                    /* mobile-only search toggle */
 .grab{display:none}                          /* mobile-only sheet drag handle */

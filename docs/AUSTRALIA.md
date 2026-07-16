@@ -12,13 +12,14 @@ so the decisions survive contact with the code.
    areas dominate density/headroom metrics and capital suburbs dominate price
    metrics, silently changing what every existing score means. Cross-city
    comparison is a non-goal; choosing *within* a market is the product.
-2. **One city per data directory.** When city #2 ships, the engine writes
-   `public/data/<city>/…` (scores, explanations, geojson, stations) plus a
-   tiny `public/data/cities.json` manifest, and the frontend gains a city
-   switcher that loads exactly one city at a time. This keeps the boot payload
-   flat (~1 MB per city instead of ~7 MB national), and the PWA, rankings,
-   URLs and service worker keep working unchanged per city. Until then the
-   single-city layout stays where it is — no churn before it pays for itself.
+2. **One city per data directory — BUILT.** The engine writes
+   `public/data/<slug>/…` (scores, explanations, boundaries, stations) plus a
+   `public/data/cities.json` manifest, and the frontend has a city switcher
+   (hidden while only one city has data) that loads exactly one city at a
+   time, with the city carried in the URL hash and remembered per device.
+   This keeps the boot payload flat (~1 MB per city instead of ~7 MB
+   national), and the PWA, rankings, URLs and service worker all work
+   unchanged per city.
 3. **City-by-city, not big-bang.** Sydney first (best open data after Vic),
    then Brisbane/Perth/Adelaide, then the smaller capitals. Each new city is
    a config profile + per-state source adapters; the frontend needs nothing
@@ -36,16 +37,24 @@ and the app derives the rest from data:
   from the loaded boundary file — no hardcoded coordinates remain.
 - "Greater Melbourne" copy in tooltips/toasts uses `data.city`.
 
+Also built since: the multi-city plumbing itself. `engine/config.py` holds a
+`CITIES` registry (Melbourne ready; Sydney profiled with `ready: False`),
+`python -m engine.run --city <slug>` switches profiles (`--geo-only` already
+works for any city since ABS boundaries are national; a full build refuses
+until the state's adapters exist), every output goes to
+`public/data/<slug>/…`, `build()` maintains `cities.json`, and the frontend
+resolves the city from hash → saved choice → manifest default.
+
 Still Melbourne-specific by design (fix when city #2 ships):
 
 - The product name/brand ("Melbourne Property", `index.html` meta, boot
   screen, og.png) — a naming decision, not a code one.
-- `public/data/melbourne.geojson` filename and the single-city data layout
-  (see decision 2).
 - The Guide's "Data & sources" tab describes Victorian agencies; it becomes
   per-city content (engine already ships a `sources` note it could render).
-- `.github/workflows/refresh_data.yml` refreshes one city; it becomes a
-  matrix over city profiles.
+- `build.py`'s `SOURCES_NOTE` text and the Vic zone groupings in config —
+  both move into the city profile with the first NSW adapters.
+- `.github/workflows/refresh_data.yml` refreshes Melbourne (paths already
+  per-city); it becomes a matrix over ready cities.
 
 ## What scales for free (national datasets)
 
@@ -125,25 +134,34 @@ The station-access scoring is already source-agnostic — it needs
 general-rate brackets (each ~6 lines) as each city ships. No entry = the Ask
 box simply omits the estimate.
 
-## Architecture changes when city #2 ships
+## Architecture status
 
-1. `engine/config.py`: `CITIES = {"melbourne": {...}, "sydney": {...}}` — each
-   profile holds GCC name, state code, regions map, zone groupings, and which
-   source adapters to use. `python -m engine.run --city sydney`.
-2. Output per city: `public/data/<city>/{scores,explanations}.json`,
-   `boundaries.geojson`, `stations.geojson` + `public/data/cities.json`.
-3. Frontend: city switcher in the topbar; city slug in the URL hash;
-   everything else already reads from the loaded payload.
-4. `refresh_data.yml`: matrix over cities; guards run per city.
+1. ✅ `engine/config.py`: `CITIES` registry + `set_city()`;
+   `python -m engine.run --city sydney` (blocked until adapters exist,
+   `--geo-only` allowed). Zone groupings still module-level Vic sets — move
+   into the profile with the first non-Vic zoning adapter.
+2. ✅ Output per city: `public/data/<slug>/{scores,explanations,prev-scores}.json`,
+   `boundaries.geojson`, `stations.geojson` + `public/data/cities.json`
+   (maintained by `build()`; a city appears only once its data exists).
+3. ✅ Frontend: city switcher in the topbar (hidden with one city), `city`
+   hash param, per-device memory; everything else reads the loaded payload.
+4. ⬜ `refresh_data.yml`: Melbourne-only for now (paths per-city already);
+   becomes a matrix over ready cities when there are two.
 5. Payload budget: each city stays ~1–1.5 MB gzipped; nothing national ever
    loads at boot.
 
 ## Sequencing
 
-1. **Done (this change):** city profile in config, `state`/`regions` in the
-   payload, data-derived map view/geocoder box, per-state duty table.
-2. **Sydney** — BOCSAR + NSW VG + bonds + planning portal + TfNSW; build the
-   multi-city dirs + switcher as part of it (first real consumer).
+1. **Done:** city profile in config, `state`/`regions` in the payload,
+   data-derived map view/geocoder box, per-state duty table.
+1b. **Done:** the full multi-city plumbing — per-city data dirs, cities.json,
+   `--city` builds, frontend switcher. Sydney's profile (GCC, NSW regions
+   map) is registered with `ready: False`.
+2. **Sydney data** — the NSW source adapters: BOCSAR crime, NSW VG prices,
+   bond-board rents, planning portal zoning (needs the NSW zone-code
+   groupings), TfNSW stations. NOTE: state portals are unreachable from the
+   sandboxed dev environment — build/test the adapters on a machine with open
+   network or in GitHub Actions, where the monthly refresh already runs.
 3. **Brisbane, Perth, Adelaide** — one at a time; zoning mapping is the slog.
 4. **Hobart, Darwin, Canberra** — small SA2 counts; accept LGA-level crime.
 5. Regional (non-GCC) Australia only after capitals — needs a different

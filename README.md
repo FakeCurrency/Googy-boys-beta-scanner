@@ -48,7 +48,8 @@ melbourne-property/
       zoning.py        VicPlan zones + Heritage Overlay sampled per SA2
       electricity.py   Geoscience Australia transmission network
   public/              the deployed static site (Leaflet map, scorecard, sliders)
-    data/ melbourne.geojson  scores.json  explanations.json  stations.geojson  electricity.geojson
+    data/cities.json   which cities have data (drives the city switcher)
+    data/<city>/       boundaries.geojson  scores.json  explanations.json  stations.geojson
   scripts/             double-click launchers: .bat (Windows) + .sh (macOS/Linux)
   data_raw/            cached source downloads (gitignored)
 ```
@@ -62,7 +63,7 @@ http://localhost:8766) and **`scripts/Refresh Data.bat`** to rebuild. On macOS/L
 ```bash
 python -m venv .venv
 .venv\Scripts\python -m pip install -r requirements.txt
-.venv\Scripts\python -m engine.run          # build public/data/*
+.venv\Scripts\python -m engine.run          # build public/data/melbourne/* (--city sydney once its adapters exist)
 .venv\Scripts\python -m http.server 8766 --directory public
 ```
 

@@ -144,7 +144,7 @@ def get_prices(name_by_code: dict[str, str]) -> dict[str, dict]:
 if __name__ == "__main__":  # pragma: no cover
     import json
     from .. import config
-    fc = json.loads((config.PUBLIC_DATA / "melbourne.geojson").read_text(encoding="utf-8"))
+    fc = json.loads((config.CITY_DATA / config.BOUNDARIES_NAME).read_text(encoding="utf-8"))
     names = {f["properties"]["sa2_code"]: f["properties"]["sa2_name"] for f in fc["features"]}
     pr = get_prices(names)
     for nm in ("Nunawading", "Toorak", "Brighton (Vic.)", "Tarneit - North", "Cobblebank - Strathtulloh"):

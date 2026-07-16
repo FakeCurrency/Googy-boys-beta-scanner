@@ -176,7 +176,7 @@ def get_crime() -> dict[str, dict]:
     """{sa2_code: {lga, person, property, total}} for Greater Melbourne SA2s."""
     rates = _offences_by_lga()
     lgas = _load_vic_lgas()
-    points = geo.melbourne_sa2_points()
+    points = geo.sa2_points()
 
     out = {}
     for code, (x, y) in points.items():

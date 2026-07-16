@@ -215,7 +215,7 @@ def get_rents(name_by_code: dict[str, str],
 if __name__ == "__main__":  # pragma: no cover
     import json
     from .. import config
-    fc = json.loads((config.PUBLIC_DATA / "melbourne.geojson").read_text(encoding="utf-8"))
+    fc = json.loads((config.CITY_DATA / config.BOUNDARIES_NAME).read_text(encoding="utf-8"))
     names = {f["properties"]["sa2_code"]: f["properties"]["sa2_name"] for f in fc["features"]}
     from .crime import get_crime
     lgas = {c: v["lga"] for c, v in get_crime().items()}

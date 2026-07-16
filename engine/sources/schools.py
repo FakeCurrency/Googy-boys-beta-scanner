@@ -121,9 +121,9 @@ def get_schools(points: dict[str, tuple[float, float]],
 if __name__ == "__main__":  # pragma: no cover
     import json
     from .. import geo
-    pts = geo.melbourne_sa2_points()
+    pts = geo.sa2_points()
     names = {f["properties"]["sa2_code"]: f["properties"]["sa2_name"]
-             for f in json.loads((config.PUBLIC_DATA / "melbourne.geojson").read_text(encoding="utf-8"))["features"]}
+             for f in json.loads((config.CITY_DATA / config.BOUNDARIES_NAME).read_text(encoding="utf-8"))["features"]}
     sc = get_schools(pts)
     for nm in ("Toorak", "Tarneit - North", "Bentleigh East (Vic.) - North", "Cobblebank - Strathtulloh"):
         code = next((c for c, n in names.items() if n == nm), None)

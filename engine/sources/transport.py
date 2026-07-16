@@ -83,8 +83,8 @@ def get_stations(points: dict[str, tuple[float, float]],
                                      "coordinates": [round(s["lon"], 5), round(s["lat"], 5)]},
                         "properties": {"name": s["name"], "kind": s["kind"], "pax": s["pax"]}})
 
-    config.PUBLIC_DATA.mkdir(parents=True, exist_ok=True)
-    (config.PUBLIC_DATA / "stations.geojson").write_text(
+    config.CITY_DATA.mkdir(parents=True, exist_ok=True)
+    (config.CITY_DATA / "stations.geojson").write_text(
         json.dumps({"type": "FeatureCollection", "features": overlay}, separators=(",", ":")),
         encoding="utf-8")
 
@@ -136,9 +136,9 @@ def get_stations(points: dict[str, tuple[float, float]],
 
 if __name__ == "__main__":  # pragma: no cover
     from .. import geo
-    pts = geo.melbourne_sa2_points()
+    pts = geo.sa2_points()
     names = {f["properties"]["sa2_code"]: f["properties"]["sa2_name"]
-             for f in json.loads((config.PUBLIC_DATA / "melbourne.geojson").read_text(encoding="utf-8"))["features"]}
+             for f in json.loads((config.CITY_DATA / config.BOUNDARIES_NAME).read_text(encoding="utf-8"))["features"]}
     st = get_stations(pts)
     for nm in ("Toorak", "Tarneit - North", "Nunawading", "Cobblebank - Strathtulloh", "Warrandyte - Wonga Park"):
         code = next((c for c, n in names.items() if n == nm), None)

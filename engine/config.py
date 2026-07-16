@@ -11,37 +11,97 @@ DATA_RAW = ROOT / "data_raw"          # cached source downloads (gitignored)
 PUBLIC = ROOT / "public"
 PUBLIC_DATA = PUBLIC / "data"
 
-# --- Geography / city profile -----------------------------------------------
-# We score ABS SA2 areas ("suburbs") inside one Greater Capital City. Everything
-# city-specific the frontend needs ships inside scores.json (state, regions),
-# so the static site stays city-agnostic. Adding a city = a new profile here
-# plus per-state source adapters — see docs/AUSTRALIA.md for the full plan.
-GCC_NAME = "Greater Melbourne"        # matches GCC_NAME21 in the ABS shapefile
-STATE_NAME = "Victoria"
-STATE_CODE = "VIC"                    # keys the frontend's per-state tables (stamp duty)
-
-# Compass-word -> ABS SA4 lists for the Ask box's region filter. Curated per
-# city because these are colloquial judgment calls, not string matches ("east"
-# must not match "Melbourne - South East"; "inner west" colloquially means the
-# West SA4). ORDER MATTERS: the frontend takes the first key that matches, so
-# longer phrases must come before the single words they contain.
-CITY_REGIONS = {
-    "inner west": ["Melbourne - West"],
-    "inner north": ["Melbourne - Inner"],
-    "inner east": ["Melbourne - Inner East"],
-    "inner south": ["Melbourne - Inner South"],
-    "outer east": ["Melbourne - Outer East"],
-    "north east": ["Melbourne - North East"],
-    "north west": ["Melbourne - North West"],
-    "south east": ["Melbourne - South East"],
-    "inner": ["Melbourne - Inner", "Melbourne - Inner East", "Melbourne - Inner South"],
-    "west": ["Melbourne - West", "Melbourne - North West"],
-    "north": ["Melbourne - North East", "Melbourne - North West"],
-    "east": ["Melbourne - Inner East", "Melbourne - Outer East", "Melbourne - North East"],
-    "south": ["Melbourne - Inner South", "Melbourne - South East", "Mornington Peninsula"],
-    "mornington": ["Mornington Peninsula"],
-    "peninsula": ["Mornington Peninsula"],
+# --- Cities ------------------------------------------------------------------
+# We score ABS SA2 areas ("suburbs") inside one Greater Capital City at a time.
+# Each city is a profile here; everything city-specific the frontend needs
+# ships inside that city's scores.json (state, regions), and each city's files
+# live under public/data/<slug>/. Adding a city = a profile + per-state source
+# adapters — see docs/AUSTRALIA.md for the full plan and per-state source matrix.
+#
+# `regions`: compass-word -> ABS SA4 lists for the Ask box's region filter.
+# Curated per city because these are colloquial judgment calls, not string
+# matches ("east" must not match "Melbourne - South East"; Sydney's "inner
+# west" is its own SA4). ORDER MATTERS: the frontend takes the first key that
+# matches, so longer phrases must come before the single words they contain.
+CITIES = {
+    "melbourne": {
+        "slug": "melbourne", "name": "Melbourne",
+        "gcc": "Greater Melbourne",   # matches GCC_NAME21 in the ABS shapefile
+        "state": "Victoria", "state_code": "VIC",
+        "ready": True,                # all source adapters exist
+        "regions": {
+            "inner west": ["Melbourne - West"],
+            "inner north": ["Melbourne - Inner"],
+            "inner east": ["Melbourne - Inner East"],
+            "inner south": ["Melbourne - Inner South"],
+            "outer east": ["Melbourne - Outer East"],
+            "north east": ["Melbourne - North East"],
+            "north west": ["Melbourne - North West"],
+            "south east": ["Melbourne - South East"],
+            "inner": ["Melbourne - Inner", "Melbourne - Inner East", "Melbourne - Inner South"],
+            "west": ["Melbourne - West", "Melbourne - North West"],
+            "north": ["Melbourne - North East", "Melbourne - North West"],
+            "east": ["Melbourne - Inner East", "Melbourne - Outer East", "Melbourne - North East"],
+            "south": ["Melbourne - Inner South", "Melbourne - South East", "Mornington Peninsula"],
+            "mornington": ["Mornington Peninsula"],
+            "peninsula": ["Mornington Peninsula"],
+        },
+    },
+    # Profile scaffold: the ABS layers (boundaries, SEIFA, Census, ERP) and the
+    # Geoscience Australia grid are national and work as-is, but the NSW source
+    # adapters (BOCSAR crime, Valuer General prices, bond-board rents, planning
+    # portal zoning, TfNSW stations) are not built yet — engine.run refuses a
+    # full build until they are. docs/AUSTRALIA.md has the adapter contracts.
+    "sydney": {
+        "slug": "sydney", "name": "Sydney",
+        "gcc": "Greater Sydney",
+        "state": "New South Wales", "state_code": "NSW",
+        "ready": False,
+        "regions": {
+            "eastern suburbs": ["Sydney - Eastern Suburbs"],
+            "northern beaches": ["Sydney - Northern Beaches"],
+            "north shore": ["Sydney - North Sydney and Hornsby", "Sydney - Ryde"],
+            "central coast": ["Central Coast"],
+            "inner west": ["Sydney - Inner West"],
+            "inner south": ["Sydney - City and Inner South"],
+            "south west": ["Sydney - South West", "Sydney - Outer South West", "Sydney - Inner South West"],
+            "outer west": ["Sydney - Outer West and Blue Mountains", "Sydney - Blacktown"],
+            "inner": ["Sydney - City and Inner South", "Sydney - Inner West", "Sydney - Eastern Suburbs"],
+            "east": ["Sydney - Eastern Suburbs"],
+            "north": ["Sydney - North Sydney and Hornsby", "Sydney - Northern Beaches",
+                      "Sydney - Ryde", "Sydney - Baulkham Hills and Hawkesbury"],
+            "west": ["Sydney - Parramatta", "Sydney - Blacktown", "Sydney - Outer West and Blue Mountains"],
+            "south": ["Sydney - Sutherland", "Sydney - Inner South West", "Sydney - South West"],
+            "hills": ["Sydney - Baulkham Hills and Hawkesbury"],
+            "shire": ["Sydney - Sutherland"],
+            "sutherland": ["Sydney - Sutherland"],
+            "parramatta": ["Sydney - Parramatta"],
+            "blacktown": ["Sydney - Blacktown"],
+        },
+    },
 }
+
+# Active city. engine.run --city <slug> switches it via set_city(); the
+# module-level aliases below exist so source modules keep reading the same
+# names they always have.
+CITY = CITIES["melbourne"]
+GCC_NAME = CITY["gcc"]
+STATE_NAME = CITY["state"]
+STATE_CODE = CITY["state_code"]
+CITY_REGIONS = CITY["regions"]
+CITY_DATA = PUBLIC / "data" / CITY["slug"]   # this city's output directory
+BOUNDARIES_NAME = "boundaries.geojson"
+
+
+def set_city(slug: str) -> None:
+    """Point the whole engine at another city profile."""
+    global CITY, GCC_NAME, STATE_NAME, STATE_CODE, CITY_REGIONS, CITY_DATA
+    CITY = CITIES[slug]
+    GCC_NAME = CITY["gcc"]
+    STATE_NAME = CITY["state"]
+    STATE_CODE = CITY["state_code"]
+    CITY_REGIONS = CITY["regions"]
+    CITY_DATA = PUBLIC / "data" / CITY["slug"]
 
 # --- Data sources (all free, public) --------------------------------------
 # Boundaries: ABS ASGS Edition 3 SA2 (2021), GDA2020 shapefile (~48 MB).

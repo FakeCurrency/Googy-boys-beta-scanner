@@ -12,7 +12,7 @@ name: Refresh Data
 #     letter grade in one refresh (a sign a source shifted methodology).
 #
 # Before the build, the committed grades are snapshotted to
-# public/data/prev-scores.json so the site can show grade-trend arrows.
+# public/data/melbourne/prev-scores.json so the site can show grade-trend arrows.
 #
 # data_raw/ is cached between runs; engine/fetch.py's fresh() age gates decide
 # per-file when a source is stale enough to re-download.
@@ -74,19 +74,19 @@ jobs:
         run: |
           python - <<'PY'
           import json
-          d = json.load(open("public/data/scores.json"))
+          d = json.load(open("public/data/melbourne/scores.json"))
           snap = {
               "generated": d.get("generated"),
               "grades": {c: a["grade"] for c, a in d["areas"].items()},
               "overall": {c: a["overall"] for c, a in d["areas"].items()},
           }
-          json.dump(snap, open("public/data/prev-scores.json", "w"), separators=(",", ":"))
+          json.dump(snap, open("public/data/melbourne/prev-scores.json", "w"), separators=(",", ":"))
           print(f"snapshotted {len(snap['grades'])} grades from {snap['generated']}")
           PY
 
       - name: Build dataset
         if: inputs.restore_sha == ''
-        run: python -m engine.run
+        run: python -m engine.run --city melbourne
 
       - name: Guard against coverage regressions
         if: inputs.restore_sha == ''
@@ -104,9 +104,9 @@ jobs:
                   "crime_suburb": sum(1 for v in a if (v.get("coverage") or {}).get("crime") == "suburb"),
               }
 
-          new = json.load(open("public/data/scores.json"))
+          new = json.load(open("public/data/melbourne/scores.json"))
           old = json.loads(subprocess.check_output(
-              ["git", "show", "HEAD:public/data/scores.json"], text=True))
+              ["git", "show", "HEAD:public/data/melbourne/scores.json"], text=True))
           n, o = cov(new), cov(old)
           print("coverage old -> new:", {k: f"{o[k]}->{n[k]}" for k in o})
           bad = [k for k in o if n[k] < o[k] - max(2, round(o[k] * 0.02))]
@@ -120,8 +120,8 @@ jobs:
         run: |
           python - <<'PY'
           import json
-          new = json.load(open("public/data/scores.json"))
-          prev = json.load(open("public/data/prev-scores.json"))
+          new = json.load(open("public/data/melbourne/scores.json"))
+          prev = json.load(open("public/data/melbourne/prev-scores.json"))
           changed = [c for c, g in prev["grades"].items()
                      if c in new["areas"] and new["areas"][c]["grade"] != g]
           pct = 100 * len(changed) / max(1, len(prev["grades"]))

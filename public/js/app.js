@@ -8,17 +8,26 @@
   // Versioned data URLs: keeps code + data cache-coherent on GitHub Pages
   // (bump together with the ?v= asset versions in index.html; the deploy
   // workflow overwrites both with the run number).
-  const DATA_V = "23";
+  const DATA_V = "24";
   const boot = document.getElementById("boot");
   const fetchJson = url => fetch(url).then(r => {
     if (!r.ok) throw new Error(url.split("?")[0] + " → HTTP " + r.status);
     return r.json();
   });
+  // Cities manifest: each city's files live under data/<slug>/. Pick the city
+  // from the URL hash, then the saved choice, then the manifest default.
+  let CITIES = { default: "melbourne", cities: [{ slug: "melbourne", name: "Melbourne" }] };
+  try { CITIES = await fetchJson("data/cities.json?v=" + DATA_V); } catch (e) {}
+  const wantCity = new URLSearchParams(location.hash.replace(/^#/, "")).get("city");
+  let savedCity = null; try { savedCity = localStorage.getItem("city"); } catch (e) {}
+  const citySlug = [wantCity, savedCity, CITIES.default]
+    .find(s => s && CITIES.cities.some(c => c.slug === s)) || CITIES.cities[0].slug;
+  const CITY_BASE = "data/" + citySlug + "/";
   let geo, data;
   try {
     [geo, data] = await Promise.all([
-      fetchJson("data/melbourne.geojson?v=" + DATA_V),
-      fetchJson("data/scores.json?v=" + DATA_V),
+      fetchJson(CITY_BASE + "boundaries.geojson?v=" + DATA_V),
+      fetchJson(CITY_BASE + "scores.json?v=" + DATA_V),
     ]);
   } catch (err) {
     boot.innerHTML = `<div class="boot-inner">
@@ -30,12 +39,12 @@
   }
   // Previous refresh's grades (for trend arrows) — optional, never blocks boot.
   let PREV = null;
-  fetchJson("data/prev-scores.json?v=" + DATA_V)
+  fetchJson(CITY_BASE + "prev-scores.json?v=" + DATA_V)
     .then(p => { PREV = p; if (selected) renderCard(selected); }).catch(() => {});
   // Per-suburb explanation paragraphs — split out of scores.json so first
   // paint doesn't pay for ~250 KB of prose. Loaded lazily, never blocks boot.
   let EXPL = null;
-  fetchJson("data/explanations.json?v=" + DATA_V)
+  fetchJson(CITY_BASE + "explanations.json?v=" + DATA_V)
     .then(x => { EXPL = x; if (selected) renderCard(selected); }).catch(() => { EXPL = {}; });
   // works with both the split file and legacy inline explanation_* fields
   const explOf = a => (EXPL && EXPL[a._c]) || {
@@ -743,6 +752,7 @@
   function writeHash() {
     if (!hashReady) return;
     const p = new URLSearchParams();
+    if (citySlug !== (CITIES.default || CITIES.cities[0].slug)) p.set("city", citySlug);
     if (selected) p.set("s", selected);
     if (compareWith && compareWith.length) p.set("vs", compareWith.join("~"));
     p.set("m", mode); p.set("w", Math.round(wLive * 100));
@@ -1006,6 +1016,27 @@
   };
   map.on("click", closeSearch);
 
+  // ---- city switcher (appears only once a second city has data) -----------
+  // A pasted #city= link into an already-open tab must also switch: hash-only
+  // navigation doesn't reload, so watch for it and reboot into the new city.
+  addEventListener("hashchange", () => {
+    const c = new URLSearchParams(location.hash.replace(/^#/, "")).get("city");
+    if (c && c !== citySlug && CITIES.cities.some(x => x.slug === c)) location.reload();
+  });
+  if (CITIES.cities.length > 1) {
+    const sel = document.createElement("select");
+    sel.id = "citySwitch"; sel.title = "Switch city"; sel.setAttribute("aria-label", "Switch city");
+    sel.innerHTML = CITIES.cities.map(c =>
+      `<option value="${c.slug}"${c.slug === citySlug ? " selected" : ""}>${c.name}</option>`).join("");
+    sel.onchange = () => {
+      try { localStorage.setItem("city", sel.value); } catch (e) {}
+      const p = new URLSearchParams(); p.set("city", sel.value);
+      location.hash = "#" + p.toString();   // a fresh view — the suburb belongs to the old
+      location.reload();                    // city; reload even if the hash didn't change
+    };
+    document.querySelector("#topbar .brand").after(sel);
+  }
+
   // ---- Ask: plain-English budget/goal queries, answered from the data -----
   // "500k and I want to live" / "800k to invest" — parsed and ranked entirely
   // client-side; no API, works offline, instant for every visitor.
@@ -1201,7 +1232,7 @@
   let stnLayer = null;
   async function ensureStations() {
     if (stnLayer) return stnLayer;
-    const gj = await fetch("data/stations.geojson?v=" + DATA_V).then(r => r.json());
+    const gj = await fetch(CITY_BASE + "stations.geojson?v=" + DATA_V).then(r => r.json());
     stnLayer = L.geoJSON(gj, {
       pointToLayer: (f, ll) => L.circleMarker(ll, {
         radius: f.properties.kind === "metro" ? 3.5 : 4.5,
