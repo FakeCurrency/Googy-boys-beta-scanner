@@ -85,13 +85,13 @@ CITIES = {
             "blacktown": ["Sydney - Blacktown"],
         },
     },
-    # QLD adapters not built yet — engine.run allows --geo-only but refuses a
-    # full build until sources/qld/ exists. Flip ready once they land.
     "brisbane": {
         "slug": "brisbane", "name": "Brisbane",
         "gcc": "Greater Brisbane",
         "state": "Queensland", "state_code": "QLD",
-        "ready": False,
+        # QLD adapters in sources/qld/ (v1 — no open sale prices or rents;
+        # see docs/AUSTRALIA.md)
+        "ready": True,
         "bbox": (152.0, -28.4, 153.6, -26.4),   # Ipswich to Moreton Bay/Redlands
         "origin": (153.03, -27.47),
         "regions": {

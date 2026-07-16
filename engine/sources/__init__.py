@@ -24,6 +24,8 @@ def for_state(state_code: str) -> SimpleNamespace:
         from . import crime, prices, rents, schools, transport, zoning
     elif state_code == "NSW":
         from .nsw import crime, prices, rents, schools, transport, zoning
+    elif state_code == "QLD":
+        from .qld import crime, prices, rents, schools, transport, zoning
     else:
         raise ValueError(f"no source adapters for state {state_code!r} — see docs/AUSTRALIA.md")
     return SimpleNamespace(crime=crime, prices=prices, rents=rents,
