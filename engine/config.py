@@ -85,6 +85,31 @@ CITIES = {
             "blacktown": ["Sydney - Blacktown"],
         },
     },
+    # QLD adapters not built yet — engine.run allows --geo-only but refuses a
+    # full build until sources/qld/ exists. Flip ready once they land.
+    "brisbane": {
+        "slug": "brisbane", "name": "Brisbane",
+        "gcc": "Greater Brisbane",
+        "state": "Queensland", "state_code": "QLD",
+        "ready": False,
+        "bbox": (152.0, -28.4, 153.6, -26.4),   # Ipswich to Moreton Bay/Redlands
+        "origin": (153.03, -27.47),
+        "regions": {
+            "inner city": ["Brisbane Inner City"],
+            "north side": ["Brisbane - North", "Moreton Bay - South"],
+            "south side": ["Brisbane - South", "Logan - Beaudesert"],
+            "east": ["Brisbane - East"],
+            "bayside": ["Brisbane - East"],
+            "redlands": ["Brisbane - East"],
+            "west": ["Brisbane - West"],
+            "north": ["Brisbane - North", "Moreton Bay - North", "Moreton Bay - South"],
+            "south": ["Brisbane - South", "Logan - Beaudesert"],
+            "inner": ["Brisbane Inner City", "Brisbane - West"],
+            "ipswich": ["Ipswich"],
+            "logan": ["Logan - Beaudesert"],
+            "moreton bay": ["Moreton Bay - North", "Moreton Bay - South"],
+        },
+    },
 }
 
 # Active city. engine.run --city <slug> switches it via set_city(); the

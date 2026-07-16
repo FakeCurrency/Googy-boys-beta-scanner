@@ -1,0 +1,129 @@
+name: City Probe
+
+# Generic per-city bring-up workflow, run in CI where the network is open
+# (the sandboxed dev environment can't reach government portals — see
+# docs/AUSTRALIA.md). Successor to sydney_probe.yml, parameterised by city:
+#   1. Builds the city's boundaries from the national ABS SA2 shapefile
+#      (--geo-only works for any profiled city) and commits them back to the
+#      branch the workflow ran on.
+#   2. Optionally runs the state's recon tool (engine/tools/<state>_recon.py)
+#      so adapters get written against source facts.
+#   3. Optionally attempts a full --city build; on success commits the
+#      dataset + cities.json back to the branch.
+
+on:
+  workflow_dispatch:
+    inputs:
+      city:
+        description: "City slug from engine/config.py CITIES"
+        required: true
+        default: "brisbane"
+      recon:
+        description: "Run engine/tools/<state>_recon.py"
+        type: boolean
+        default: true
+      full_build:
+        description: "Attempt a full --city build and commit the dataset"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      CITY: ${{ inputs.city }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Restore raw-data cache
+        uses: actions/cache@v4
+        with:
+          path: data_raw
+          key: data-raw-probe-${{ github.run_id }}
+          restore-keys: |
+            data-raw-
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Build boundaries (--geo-only)
+        run: |
+          python -m engine.run --city "$CITY" --geo-only
+          python - <<'PY'
+          import json, os
+          city = os.environ["CITY"]
+          fc = json.load(open(f"public/data/{city}/boundaries.geojson"))
+          sa4 = sorted({f["properties"]["sa4_name"] for f in fc["features"]})
+          print(f"{city} SA2 features: {len(fc['features'])}")
+          print("SA4s:")
+          for s in sa4: print("  -", s)
+          PY
+
+      - name: State source recon
+        if: inputs.recon
+        run: |
+          ST=$(python -c "from engine import config; print(config.CITIES['$CITY']['state_code'].lower())")
+          echo "== recon tool: engine.tools.${ST}_recon"
+          python -m "engine.tools.${ST}_recon"
+
+      - name: Full build
+        id: full_build
+        if: inputs.full_build
+        continue-on-error: true
+        timeout-minutes: 35
+        run: |
+          python -m engine.run --city "$CITY"
+          python - <<'PY'
+          import json, os
+          city = os.environ["CITY"]
+          d = json.load(open(f"public/data/{city}/scores.json"))
+          a = list(d["areas"].values())
+          print(f"== {city} build summary: {len(a)} areas")
+          checks = {
+              "prices":       lambda v: (v.get("market") or {}).get("median_house"),
+              "rents":        lambda v: (v.get("market") or {}).get("rent_weekly"),
+              "zoning":       lambda v: v.get("zoning"),
+              "crime_suburb": lambda v: (v.get("coverage") or {}).get("crime") == "suburb",
+              "station_km":   lambda v: (v.get("transit") or {}).get("nearest_station_km") is not None,
+              "schools":      lambda v: (v.get("schools") or {}).get("nearest_primary_km") is not None,
+          }
+          for k, f in checks.items():
+              print(f"  {k:14} {sum(1 for v in a if f(v))}/{len(a)}")
+          top = sorted(a, key=lambda v: -v["overall"])[:5]
+          print("  top by overall:", [(v["name"], v["overall"], v["grade"]) for v in top])
+          PY
+
+      - name: Commit dataset back to this branch
+        if: inputs.full_build && steps.full_build.outcome == 'success'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "public/data/$CITY" public/data/cities.json
+          if git diff --cached --quiet; then
+            echo "No dataset changes."
+          else
+            git commit -m "$CITY v1 dataset: full --city $CITY build via CI"
+            git pull --rebase origin "${{ github.ref_name }}"
+            git push origin "HEAD:${{ github.ref_name }}"
+          fi
+
+      - name: Commit boundaries back to this branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "public/data/$CITY"
+          if git diff --cached --quiet; then
+            echo "No boundary changes — nothing to commit."
+          else
+            git commit -m "$CITY boundaries: ABS SA2 via CI probe (--geo-only)"
+            git pull --rebase origin "${{ github.ref_name }}"
+            git push origin "HEAD:${{ github.ref_name }}"
+          fi
