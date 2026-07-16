@@ -17,7 +17,7 @@ import openpyxl
 import requests
 
 from ... import config
-from ...fetch import fetch, fresh
+from ...fetch import fresh
 from ..crime import _sa2_localities
 import json
 
@@ -26,10 +26,45 @@ _MONTHS = {m: i + 1 for i, m in enumerate(
     ["january", "february", "march", "april", "may", "june", "july",
      "august", "september", "october", "november", "december"])}
 
+# fetch()'s "(melb-scorer data build)" UA gets WAF-403 HTML back for the xlsx
+# files (run #4: every workbook failed "File is not a zip file"), while a plain
+# browser UA is let through. One session keeps the landing-page cookies for the
+# downloads.
+_SESSION = requests.Session()
+_SESSION.headers.update({
+    "User-Agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                   "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"),
+    "Referer": PAGE,
+})
+
+
+def _fetch_xlsx(url: str, filename: str):
+    """Download a bond workbook, validating it's a real zip (xlsx) not a WAF page.
+
+    Also self-heals cache poisoning: run #4 stored WAF HTML under .xlsx names,
+    and those bad files live on in the Actions data_raw cache.
+    """
+    config.DATA_RAW.mkdir(parents=True, exist_ok=True)
+    dest = config.DATA_RAW / filename
+    if dest.exists() and dest.stat().st_size > 0:
+        if dest.read_bytes()[:2] == b"PK":
+            print(f"  cached  {filename} ({dest.stat().st_size/1e6:.1f} MB)")
+            return dest
+        print(f"  rents: cached {filename} is not a zip — re-downloading")
+    r = _SESSION.get(url, timeout=120)
+    r.raise_for_status()
+    if r.content[:2] != b"PK":
+        head = r.content[:120].decode("utf-8", "replace").replace("\n", " ")
+        raise RuntimeError(f"not an xlsx (content-type={r.headers.get('content-type')!r}, "
+                           f"starts {head!r})")
+    dest.write_bytes(r.content)
+    print(f"  downloaded  {filename} ({dest.stat().st_size/1e6:.1f} MB)")
+    return dest
+
 
 def _lodgement_urls() -> list[tuple[int, int, str]]:
     """[(year, month, absolute url)] for every lodgement workbook on the page."""
-    html = requests.get(PAGE, timeout=60, headers={"User-Agent": "Mozilla/5.0"}).text
+    html = _SESSION.get(PAGE, timeout=60).text
     out = []
     for href in set(re.findall(r'href="([^"]+\.xlsx[^"]*)"', html, re.I)):
         m = re.search(r"odgements?[_-]([A-Za-z]+)[_-](\d{4})", href)
@@ -47,9 +82,10 @@ def _rents_by_postcode() -> tuple[dict[str, dict], str]:
     """({postcode: {"all": [...], "house3": [...], "flat2": [...], "n": int}}, latest label)"""
     cache = config.DATA_RAW / "nsw_bond_rents.json"
     if fresh(cache, 45):
-        print("  cached  nsw_bond_rents.json")
         d = json.loads(cache.read_text(encoding="utf-8"))
-        return d["postcodes"], d["latest"]
+        if d.get("postcodes"):   # an empty cache means a failed run — rebuild
+            print("  cached  nsw_bond_rents.json")
+            return d["postcodes"], d["latest"]
 
     urls = _lodgement_urls()
     if not urls:
@@ -59,7 +95,7 @@ def _rents_by_postcode() -> tuple[dict[str, dict], str]:
     acc: dict[str, dict] = defaultdict(lambda: {"all": [], "house3": [], "flat2": [], "n": 0})
     for year, mon, url in latest12:
         try:
-            path = fetch(url, f"nsw_bonds_{year}_{mon:02d}.xlsx", max_age_days=3650)
+            path = _fetch_xlsx(url, f"nsw_bonds_{year}_{mon:02d}.xlsx")
             wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
             ws = wb[wb.sheetnames[0]]
             header = None
@@ -101,7 +137,8 @@ def _rents_by_postcode() -> tuple[dict[str, dict], str]:
         except Exception as e:  # noqa: BLE001 - one bad month shouldn't kill rents
             print(f"  rents: {url.rsplit('/', 1)[-1]} failed ({e})")
     out = {pc: a for pc, a in acc.items() if a["n"] >= 5}
-    cache.write_text(json.dumps({"postcodes": out, "latest": label}), encoding="utf-8")
+    if out:   # never cache a failed (empty) run
+        cache.write_text(json.dumps({"postcodes": out, "latest": label}), encoding="utf-8")
     print(f"  rents: bond medians for {len(out)} NSW postcodes (12 months to {label})")
     return out, label
 

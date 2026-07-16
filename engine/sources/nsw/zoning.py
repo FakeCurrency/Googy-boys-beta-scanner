@@ -39,10 +39,23 @@ def _shares_for(sa2_geom: dict) -> dict | None:
     pts = _grid_points(polys, bbox)
     if not pts:
         return None
-    zones = [(f["attributes"].get("SYM_CODE") or "", _rings_of(f["geometry"]))
-             for f in _query(ZONES_URL, bbox, "SYM_CODE") if f.get("geometry")]
-    heritage = [_rings_of(f["geometry"])
-                for f in _query(HERITAGE_URL, bbox, "OBJECTID") if f.get("geometry")]
+    # _query asks for f=geojson, so attributes arrive under "properties"
+    zones = []
+    for f in _query(ZONES_URL, bbox, "SYM_CODE"):
+        if not f.get("geometry"):
+            continue
+        rings = _rings_of(f["geometry"])
+        if not rings:
+            continue
+        code = ((f.get("properties") or f.get("attributes") or {}).get("SYM_CODE") or "")
+        zones.append((code, rings, _bbox(rings)))
+    heritage = []
+    for f in _query(HERITAGE_URL, bbox, "OBJECTID"):
+        if not f.get("geometry"):
+            continue
+        rings = _rings_of(f["geometry"])
+        if rings:
+            heritage.append((rings, _bbox(rings)))
 
     n = len(pts)
     tally: dict[str, int] = {}
@@ -51,8 +64,8 @@ def _shares_for(sa2_geom: dict) -> dict | None:
     ldrz_points: list[list[float]] = []
     for x, y in pts:
         code = None
-        for zc, zpolys in zones:
-            if _in_polys(x, y, zpolys):
+        for zc, zpolys, zb in zones:
+            if zb[0] <= x <= zb[2] and zb[1] <= y <= zb[3] and _in_polys(x, y, zpolys):
                 code = zc.strip().upper()
                 break
         if code:
@@ -70,7 +83,8 @@ def _shares_for(sa2_geom: dict) -> dict | None:
             if code in ZONES_LOWDEN:
                 lowden += 1
                 ldrz_points.append([round(x, 4), round(y, 4)])
-        if any(_in_polys(x, y, hp) for hp in heritage):
+        if any(hb[0] <= x <= hb[2] and hb[1] <= y <= hb[3] and _in_polys(x, y, hp)
+               for hp, hb in heritage):
             her += 1
 
     gs, ss, rs = growth / n, standard / n, restrict / n
@@ -98,18 +112,24 @@ def get_zoning(features_by_code: dict[str, dict]) -> dict[str, dict]:
 
         def work(code):
             try:
-                return code, _shares_for(features_by_code[code])
+                return code, _shares_for(features_by_code[code]), None
             except Exception as e:  # noqa: BLE001 - one bad SA2 shouldn't kill the build
-                print(f"    zoning failed for {code}: {e}")
-                return code, None
+                return code, None, e
 
+        fails = 0
         with ThreadPoolExecutor(max_workers=6) as ex:
-            for i, (code, shares) in enumerate(ex.map(work, todo), 1):
-                if shares is not None:
+            for i, (code, shares, err) in enumerate(ex.map(work, todo), 1):
+                if err is not None:
+                    fails += 1
+                    if fails <= 5:
+                        print(f"    zoning failed for {code}: {err!r}")
+                elif shares is not None:
                     z[code] = shares
                 if i % 40 == 0:
                     print(f"    {i}/{len(todo)} sampled")
                     cache.write_text(json.dumps(z), encoding="utf-8")
+        if fails > 5:
+            print(f"    ... and {fails - 5} more zoning failures (same pattern)")
         cache.write_text(json.dumps(z), encoding="utf-8")
     ok = sum(1 for c in features_by_code if c in z)
     print(f"  zoning: shares for {ok}/{len(features_by_code)} SA2s")
