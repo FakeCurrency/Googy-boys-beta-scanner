@@ -82,7 +82,8 @@ const fail = msg => { failures++; console.error(`FAIL  ${msg}`); };
     // switch to the second city and make sure its dataset boots and ranks
     const citySel = await page.$("#citySwitch");
     if (citySel && await citySel.isVisible()) {
-      const other = await page.$$eval("#citySwitch option", os => os[1] && os[1].value);
+      const other = await page.$eval("#citySwitch",
+        el => Array.from(el.options).map(o => o.value).find(v => v !== el.value));
       await Promise.all([
         page.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 15000 }).catch(() => null),
         page.selectOption("#citySwitch", other),

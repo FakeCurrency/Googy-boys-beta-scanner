@@ -8,7 +8,7 @@
   // Versioned data URLs: keeps code + data cache-coherent on GitHub Pages
   // (bump together with the ?v= asset versions in index.html; the deploy
   // workflow overwrites both with the run number).
-  const DATA_V = "25";
+  const DATA_V = "26";
   const boot = document.getElementById("boot");
   const fetchJson = url => fetch(url).then(r => {
     if (!r.ok) throw new Error(url.split("?")[0] + " → HTTP " + r.status);
@@ -1139,6 +1139,18 @@
         if (v <= 960000) return 2870 + (v - 130000) * 0.06;
         if (v <= 2000000) return v * 0.055;
         return 110000 + (v - 2000000) * 0.065;
+      },
+    },
+    // QLD transfer duty, general rates (qro.qld.gov.au — not indexed annually;
+    // home/first-home concessions can cut these substantially).
+    QLD: {
+      name: "Qld", vintage: "FY 2024-25",
+      calc: v => {
+        if (v <= 5000) return 0;
+        if (v <= 75000) return (v - 5000) * 0.015;
+        if (v <= 540000) return 1050 + (v - 75000) * 0.035;
+        if (v <= 1000000) return 17325 + (v - 540000) * 0.045;
+        return 38025 + (v - 1000000) * 0.0575;
       },
     },
     // NSW transfer duty, FY 2024-25 thresholds (revenue.nsw.gov.au — indexed

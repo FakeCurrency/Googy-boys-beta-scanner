@@ -178,8 +178,29 @@ ships. No entry = the Ask box simply omits the estimate.
      "no data"). Follow-up: DCJ's quarterly **Rent and Sales Report**
      publishes median weekly rents by LGA/district — a future
      `nsw/rents.py` source, or a headed-browser fetch in CI.
-3. **Brisbane, Perth, Adelaide** — one at a time; zoning mapping is the slog.
-3. **Brisbane, Perth, Adelaide** — one at a time; zoning mapping is the slog.
-4. **Hobart, Darwin, Canberra** — small SA2 counts; accept LGA-level crime.
-5. Regional (non-GCC) Australia only after capitals — needs a different
+3. **Done — Brisbane is live.** Six QLD adapters in `engine/sources/qld/`
+   (City Probe recon runs #1-3; the generic `city_probe.yml` workflow drove
+   the whole bring-up). Coverage of the 246 Greater Brisbane SA2s:
+   - crime: QPS division counts (only 324 police divisions statewide, so
+     division matching reaches ~61 SA2s) + LGA per-100k rates as the
+     coverage backbone, surfaced with the existing "LGA-level" badge
+   - zoning: three-source hybrid — BCC City Plan 2014 polygons
+     (opendatasoft; "Emerging community" plays UGZ, rural-res plays LDRZ),
+     the statewide QLD Land Use layer outside BCC, and a ShapingSEQ Urban
+     Footprint point query as the label of last resort — 243/246
+   - transport: TransLink SEQ GTFS rail stations (149; busway stations
+     filtered out via a stop_times pass); no station-level patronage is
+     published, so pax ships as None
+   - schools: the data.qld schools directory via the **datastore API** (the
+     portal's /download/ URLs serve HTML wrappers to bots); covers state AND
+     non-state schools (846 in the bbox)
+   - **prices: none in v1** — bulk QVAS sales are paid-only; the titles
+     registry publishes counts, not prices. Scorecards use the no-medians
+     branch; growth/yield/value signals renormalise out.
+   - **rents: none in v1** — the RTA's median rents sit behind an
+     interactive lookup (all direct URLs 404, nothing on CKAN). Follow-ups
+     for both gaps: a headed-browser fetch in CI or a QGSO republication.
+4. **Perth, Adelaide** — one at a time; zoning mapping is the slog.
+5. **Hobart, Darwin, Canberra** — small SA2 counts; accept LGA-level crime.
+6. Regional (non-GCC) Australia only after capitals — needs a different
    density/detached calibration and a UX answer for vast low-data areas.
