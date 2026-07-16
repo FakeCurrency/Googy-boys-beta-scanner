@@ -85,103 +85,117 @@ def sample_csv(url, label):
         print(f"  sample {label}: FAILED ({e})")
 
 
-def arcgis_find_zoning():
-    base = "https://mapprod3.environment.nsw.gov.au/arcgis/rest/services"
-    for folder in ("ePlanning", "Planning"):
+def sample_zip(url, label, max_mb=40):
+    """Download a zip (bounded), list its contents, print header + 2 rows of
+    the first CSV inside."""
+    try:
+        r = _get(url)
+        if len(r.content) > max_mb * 1e6:
+            print(f"  {label}: zip is {len(r.content)/1e6:.0f} MB — skipped"); return
+        with zipfile.ZipFile(io.BytesIO(r.content)) as z:
+            names = z.namelist()
+            print(f"  {label}: {len(names)} file(s): {names[:6]}")
+            csvs = [n for n in names if n.lower().endswith((".csv", ".dat", ".txt"))]
+            if csvs:
+                lines = z.open(csvs[0]).read(6000).decode("utf-8", "replace").splitlines()
+                print(f"  head of {csvs[0]}:")
+                for ln in lines[:3]:
+                    print(f"    | {ln[:300]}")
+    except Exception as e:  # noqa: BLE001
+        print(f"  {label}: FAILED ({e})")
+
+
+def main() -> None:
+    section("CRIME — BOCSAR suburb + postcode zips (direct blob URLs)")
+    sample_zip("https://bocsarblob.blob.core.windows.net/bocsar-open-data/SuburbData.zip",
+               "SuburbData.zip")
+    sample_zip("https://bocsarblob.blob.core.windows.net/bocsar-open-data/PostcodeData.zip",
+               "PostcodeData.zip")
+
+    section("PRICES — NSW Valuer General PSI (direct 403 -> Wayback fallback?)")
+    for url in ("https://www.valuergeneral.nsw.gov.au/__psi/yearly/2024.zip",):
         try:
-            js = _get(f"{base}/{folder}?f=json").json()
-            names = [s["name"] for s in js.get("services", [])]
-            print(f"{folder}: {len(names)} services")
-            for n in names:
-                print(f"  - {n}")
+            r = requests.get(url, timeout=30, stream=True, headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                "Referer": "https://valuation.property.nsw.gov.au/embed/propertySalesInformation"})
+            print(f"GET {url} (browser UA) -> {r.status_code} type={r.headers.get('content-type')}")
+            r.close()
         except Exception as e:  # noqa: BLE001
-            print(f"{folder}: FAILED ({e})")
-    # the principal planning layers service usually carries Land Zoning
-    for svc in ("ePlanning/Planning_Portal_Principal_Planning",
-                "ePlanning/Planning_Portal_Planning_Layers"):
+            print(f"GET {url} FAILED ({e})")
+    for y in (2024, 2023):
         try:
-            js = _get(f"{base}/{svc}/MapServer?f=json").json()
-            print(f"\n{svc}/MapServer layers:")
-            zoning_ids = []
-            for lyr in js.get("layers", []):
-                mark = ""
-                if "zoning" in lyr["name"].lower():
-                    zoning_ids.append(lyr["id"]); mark = "   <-- ZONING"
-                print(f"  [{lyr['id']:>3}] {lyr['name']}{mark}")
-            for lid in zoning_ids[:1]:
+            js = _get("https://archive.org/wayback/available",
+                      params={"url": f"valuergeneral.nsw.gov.au/__psi/yearly/{y}.zip"}).json()
+            snap = (js.get("archived_snapshots") or {}).get("closest") or {}
+            print(f"wayback {y}.zip: available={snap.get('available')} url={snap.get('url')} ts={snap.get('timestamp')}")
+        except Exception as e:  # noqa: BLE001
+            print(f"wayback {y}: FAILED ({e})")
+
+    section("RENTS — scrape Fair Trading rental-bond-data page for file links")
+    try:
+        import re
+        html = _get("https://www.fairtrading.nsw.gov.au/about-fair-trading/rental-bond-data").text
+        links = sorted(set(re.findall(r'href="([^"]+\.(?:xlsx|csv|xls)[^"]*)"', html, re.I)))
+        print(f"{len(links)} file links:")
+        for ln in links[:25]:
+            print(f"  {ln}")
+    except Exception as e:  # noqa: BLE001
+        print(f"FAILED ({e})")
+
+    section("TRANSPORT — TfNSW station LOCATIONS (patronage CSV already confirmed)")
+    for q in ("train station locations", "location facilities and operators"):
+        try:
+            for pkg in ckan_search(TFNSW, q, rows=2):
+                csv = show_package(pkg, max_res=6)
+                if csv:
+                    sample_csv(csv["url"], csv.get("name", "")[:50])
+        except Exception as e:  # noqa: BLE001
+            print(f"FAILED ({e})")
+
+    section("SCHOOLS — full header of the NSW master dataset")
+    try:
+        r = _get("https://data.nsw.gov.au/data/dataset/78c10ea3-8d04-4c9c-b255-bbf8547e37e7/"
+                 "resource/3e6d5f6a-055c-440d-a690-fc0537c31095/download/master_dataset.csv",
+                 stream=True)
+        first = next(r.iter_content(16384)).decode("utf-8", "replace").splitlines()[0]
+        print("columns:")
+        for c in first.split(","):
+            print(f"  - {c}")
+        r.close()
+    except Exception as e:  # noqa: BLE001
+        print(f"FAILED ({e})")
+
+    section("ZONING — EPI Land Zoning layer fields + sample features")
+    base = "https://mapprod3.environment.nsw.gov.au/arcgis/rest/services"
+    for svc, lids in (("ePlanning/Planning_Portal_Principal_Planning", (17, 19)),
+                      ("Planning/EPI_Primary_Planning_Layers", None)):
+        try:
+            if lids is None:
+                js = _get(f"{base}/{svc}/MapServer?f=json").json()
+                print(f"\n{svc} layers:")
+                lids = []
+                for lyr in js.get("layers", []):
+                    mark = "   <-- ZONING" if "zoning" in lyr["name"].lower() else ""
+                    if mark:
+                        lids.append(lyr["id"])
+                    print(f"  [{lyr['id']:>3}] {lyr['name']}{mark}")
+            for lid in list(lids)[:2]:
                 meta = _get(f"{base}/{svc}/MapServer/{lid}?f=json").json()
-                print(f"\n  layer {lid} fields:")
-                for f in meta.get("fields", [])[:25]:
-                    print(f"    {f['name']} ({f['type']})")
+                fields = meta.get("fields") or []
+                print(f"\n{svc} layer {lid} ({meta.get('name')}): type={meta.get('type')} "
+                      f"minScale={meta.get('minScale')} fields={[f['name'] for f in fields][:18]}")
                 q = _get(f"{base}/{svc}/MapServer/{lid}/query", params={
                     "geometry": "151.21,-33.87", "geometryType": "esriGeometryPoint",
                     "inSR": 4326, "spatialRel": "esriSpatialRelIntersects",
                     "outFields": "*", "returnGeometry": "false", "f": "json",
                 }).json()
                 feats = q.get("features", [])
-                print(f"  sample query at Sydney CBD: {len(feats)} feature(s)")
+                print(f"  point query Sydney CBD: {len(feats)} feature(s) "
+                      f"{('error: ' + json.dumps(q.get('error'))[:200]) if q.get('error') else ''}")
                 if feats:
                     print(f"    {json.dumps(feats[0]['attributes'])[:400]}")
         except Exception as e:  # noqa: BLE001
             print(f"{svc}: FAILED ({e})")
-
-
-def main() -> None:
-    section("CRIME — BOCSAR via data.nsw CKAN")
-    try:
-        for pkg in ckan_search(DATA_NSW, "bocsar criminal incidents", rows=4):
-            csv = show_package(pkg)
-            if csv:
-                sample_csv(csv["url"], csv.get("name", "")[:50])
-    except Exception as e:  # noqa: BLE001
-        print(f"FAILED ({e})")
-
-    section("PRICES — NSW Valuer General bulk property sales (PSI)")
-    for url in ("https://www.valuergeneral.nsw.gov.au/__psi/yearly/2024.zip",
-                "https://www.valuergeneral.nsw.gov.au/__psi/yearly/2023.zip"):
-        try:
-            r = requests.head(url, headers=UA, timeout=30, allow_redirects=True)
-            print(f"HEAD {url} -> {r.status_code} bytes={r.headers.get('content-length')}")
-        except Exception as e:  # noqa: BLE001
-            print(f"HEAD {url} FAILED ({e})")
-    try:
-        for pkg in ckan_search(DATA_NSW, "valuer general property sales", rows=3):
-            show_package(pkg, max_res=5, note_first_csv=False)
-    except Exception as e:  # noqa: BLE001
-        print(f"FAILED ({e})")
-
-    section("RENTS — rental bond lodgements via data.nsw CKAN")
-    try:
-        for pkg in ckan_search(DATA_NSW, "rental bond lodgement", rows=4):
-            csv = show_package(pkg, max_res=6)
-            if csv:
-                sample_csv(csv["url"], csv.get("name", "")[:50])
-                break
-    except Exception as e:  # noqa: BLE001
-        print(f"FAILED ({e})")
-
-    section("TRANSPORT — TfNSW train station entries/exits")
-    try:
-        for pkg in ckan_search(TFNSW, "train station entries and exits", rows=3):
-            csv = show_package(pkg, max_res=6)
-            if csv:
-                sample_csv(csv["url"], csv.get("name", "")[:50])
-                break
-    except Exception as e:  # noqa: BLE001
-        print(f"FAILED ({e})")
-
-    section("SCHOOLS — NSW school locations via data.nsw CKAN")
-    try:
-        for pkg in ckan_search(DATA_NSW, "nsw school locations master dataset", rows=3):
-            csv = show_package(pkg, max_res=5)
-            if csv:
-                sample_csv(csv["url"], csv.get("name", "")[:50])
-                break
-    except Exception as e:  # noqa: BLE001
-        print(f"FAILED ({e})")
-
-    section("ZONING — EPI Land Zoning via NSW planning ArcGIS")
-    arcgis_find_zoning()
 
 
 if __name__ == "__main__":
