@@ -114,10 +114,96 @@ def arcgis_layer_probe(url, label, point=CBD):
         print(f"{label}: FAILED ({e})")
 
 
+def datastore_sample(resource_id, label, rows=3):
+    """data.qld.gov.au /download/ URLs serve an HTML wrapper to bots — the CKAN
+    datastore API is the reliable path when a resource is datastore-active."""
+    try:
+        js = _get(f"{DATA_QLD}/datastore_search",
+                  params={"resource_id": resource_id, "limit": str(rows)}).json()
+        res = js.get("result") or {}
+        fields = [f["id"] for f in res.get("fields", [])]
+        print(f"  datastore {label}: {len(fields)} fields: {fields[:25]}")
+        for rec in res.get("records", [])[:2]:
+            print(f"    | {json.dumps(rec)[:300]}")
+    except Exception as e:  # noqa: BLE001
+        print(f"  datastore {label}: FAILED ({e!r})")
+
+
 def main() -> None:
-    # v2 recon: v1 (run #1) confirmed the QPS S3 bucket, SEQ GTFS and the
-    # schools-directory CSV, and ruled out my guessed LandUseZoning service +
-    # the old RTA quick-finder URL. This pass drills into exactly the gaps.
+    # v3 recon (focused): v2 found division-level crime on S3, no open prices,
+    # no statewide zoning layer (BCC City Plan + ShapingSEQ + Land Use as the
+    # hybrid), and that data.qld /download/ URLs serve HTML wrappers to bots.
+    section("CRIME — division file header (S3 direct)")
+    sample_csv("https://open-crime-data.s3-ap-southeast-2.amazonaws.com/Crime%20Statistics/"
+               "division_Reported_Offences_Number.csv", "division_Reported_Offences_Number.csv")
+
+    section("ZONING — field/sample probes: ShapingSEQ 140, LandUse 0, BCC cp14 zoning")
+    base = "https://spatial-gis.information.qld.gov.au/arcgis/rest/services"
+    for lid, pt in ((140, CBD), (140, "152.76,-27.62"),   # CBD + rural Ipswich fringe
+                    ):
+        arcgis_layer_probe(f"{base}/PlanningCadastre/StatePlanning/MapServer/{lid}",
+                           f"StatePlanning/{lid} @ {pt}", point=pt)
+    for pt in (CBD, "153.10,-27.52"):
+        arcgis_layer_probe(f"{base}/PlanningCadastre/LandUse/MapServer/0",
+                           f"LandUse/0 @ {pt}", point=pt)
+    try:
+        js = _get("https://data.brisbane.qld.gov.au/api/explore/v2.1/catalog/datasets/"
+                  "cp14-zoning-overlay/records", params={"limit": "2"}, headers=BROWSER).json()
+        print(f"BCC cp14-zoning-overlay: total_count={js.get('total_count')}")
+        for rec in js.get("results", [])[:2]:
+            slim = {k: v for k, v in rec.items() if k != "geo_shape"}
+            print(f"  | {json.dumps(slim)[:400]}")
+        meta = _get("https://data.brisbane.qld.gov.au/api/explore/v2.1/catalog/datasets/"
+                    "cp14-zoning-overlay", headers=BROWSER).json()
+        flds = [f.get("name") for f in (meta.get("fields") or [])]
+        print(f"  fields: {flds}")
+    except Exception as e:  # noqa: BLE001
+        print(f"BCC cp14-zoning-overlay FAILED ({e!r})")
+    # other SEQ councils on opendatasoft/ArcGIS would go here later; BCC-only v1
+
+    section("SCHOOLS — datastore API for the schools-directory resource")
+    datastore_sample("5b39065c-df32-415c-994c-5ff12f8de997", "centredetails_may_2020.csv")
+
+    section("RENTS — RTA datasets via CKAN org listing")
+    try:
+        js = _get(f"{DATA_QLD}/organization_list").json()
+        orgs = [o for o in js["result"] if "tenanc" in o or "rta" in o or "housing" in o]
+        print(f"candidate orgs: {orgs}")
+        for org in orgs[:3]:
+            js2 = _get(f"{DATA_QLD}/package_search",
+                       params={"fq": f"organization:{org}", "rows": "10"}).json()
+            for pkg in js2["result"]["results"]:
+                print(f"  [{org}] {pkg['title']}")
+    except Exception as e:  # noqa: BLE001
+        print(f"org listing FAILED ({e!r})")
+
+    section("TRANSPORT — GTFS rail stations + service-frequency proxy")
+    try:
+        r = requests.get("https://gtfsrt.api.translink.com.au/GTFS/SEQ_GTFS.zip",
+                         headers=BROWSER, timeout=120)
+        r.raise_for_status()
+        with zipfile.ZipFile(io.BytesIO(r.content)) as z:
+            import csv as _csv
+            routes = list(_csv.DictReader(io.TextIOWrapper(z.open("routes.txt"), "utf-8-sig")))
+            from collections import Counter
+            print("route_type histogram:", Counter(rt["route_type"] for rt in routes))
+            rail_routes = {rt["route_id"] for rt in routes if rt["route_type"] in ("2",)}
+            trips = list(_csv.DictReader(io.TextIOWrapper(z.open("trips.txt"), "utf-8-sig")))
+            rail_trips = {t["trip_id"] for t in trips if t["route_id"] in rail_routes}
+            print(f"rail routes: {len(rail_routes)}, rail trips: {len(rail_trips)}")
+            stops = list(_csv.DictReader(io.TextIOWrapper(z.open("stops.txt"), "utf-8-sig")))
+            parents = [s for s in stops if s.get("location_type") == "1"]
+            print(f"stops: {len(stops)}, parent stations (location_type=1): {len(parents)}")
+            for s in parents[:5]:
+                print(f"  | {s['stop_id']} {s['stop_name']} ({s['stop_lat']},{s['stop_lon']})")
+            # how big is stop_times (for the frequency proxy)?
+            info = z.getinfo("stop_times.txt")
+            print(f"stop_times.txt: {info.file_size/1e6:.0f} MB uncompressed")
+    except Exception as e:  # noqa: BLE001
+        print(f"GTFS probe FAILED ({e!r})")
+
+
+def _unused_v2() -> None:  # kept for reference; superseded by the focused v3 above
 
     section("CRIME — enumerate the open-crime-data S3 bucket (suburb-level files?)")
     try:
