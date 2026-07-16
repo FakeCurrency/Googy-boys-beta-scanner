@@ -69,16 +69,15 @@ def show_package(pkg, max_res=8):
 
 def sample_csv(url, label):
     try:
-        r = requests.get(url, headers=BROWSER, timeout=90, stream=True)
+        r = requests.get(url, headers=BROWSER, timeout=90)
         r.raise_for_status()
         ct = r.headers.get("content-type", "")
-        chunk = next(r.iter_content(16384)).decode("utf-8", "replace")
-        print(f"  sample {label} (content-type={ct}):")
+        chunk = r.content[:16384].decode("utf-8", "replace")
+        print(f"  sample {label} (content-type={ct}, {len(r.content)/1e6:.1f} MB):")
         for ln in chunk.splitlines()[:3]:
             print(f"    | {ln[:280]}")
-        r.close()
     except Exception as e:  # noqa: BLE001 - recon keeps going
-        print(f"  sample {label}: FAILED ({e})")
+        print(f"  sample {label}: FAILED ({e!r})")
 
 
 def arcgis_folder(base, folder):
@@ -116,98 +115,114 @@ def arcgis_layer_probe(url, label, point=CBD):
 
 
 def main() -> None:
-    section("CRIME — QPS offence data (CKAN)")
-    for q in ("crime offence suburb", "qps offences"):
-        try:
-            for pkg in ckan_search(q, rows=3):
-                tab = show_package(pkg)
-                if tab:
-                    sample_csv(tab["url"], tab.get("name", "")[:50])
-        except Exception as e:  # noqa: BLE001
-            print(f"FAILED ({e})")
-    # the QPS online crime map is ArcGIS-backed; probe the well-known host
-    arcgis_layer_probe("https://mapi.police.qld.gov.au/arcgis/rest/services", "QPS ArcGIS root")
+    # v2 recon: v1 (run #1) confirmed the QPS S3 bucket, SEQ GTFS and the
+    # schools-directory CSV, and ruled out my guessed LandUseZoning service +
+    # the old RTA quick-finder URL. This pass drills into exactly the gaps.
 
-    section("PRICES — Qld property sales (CKAN; may be paid QVAS)")
-    for q in ("property sales", "residential land sales", "valuation sales"):
-        try:
-            for pkg in ckan_search(q, rows=3):
-                tab = show_package(pkg)
-                if tab:
-                    sample_csv(tab["url"], tab.get("name", "")[:50])
-        except Exception as e:  # noqa: BLE001
-            print(f"FAILED ({e})")
-
-    section("RENTS — RTA median rents (CKAN + rta.qld.gov.au scrape)")
-    for q in ("median rents", "rental bond"):
-        try:
-            for pkg in ckan_search(q, rows=3):
-                tab = show_package(pkg)
-                if tab:
-                    sample_csv(tab["url"], tab.get("name", "")[:50])
-        except Exception as e:  # noqa: BLE001
-            print(f"FAILED ({e})")
+    section("CRIME — enumerate the open-crime-data S3 bucket (suburb-level files?)")
     try:
-        html = _get("https://www.rta.qld.gov.au/median-rents-quick-finder", headers=BROWSER).text
-        links = sorted(set(re.findall(r'href="([^"]+\.(?:xlsx|csv|xls)[^"]*)"', html, re.I)))
-        print(f"rta.qld.gov.au quick-finder: {len(links)} file links")
-        for ln in links[:15]:
-            print(f"  {ln}")
+        xml = _get("https://open-crime-data.s3-ap-southeast-2.amazonaws.com/",
+                   params={"list-type": "2", "prefix": "Crime Statistics/", "max-keys": "400"}).text
+        keys = re.findall(r"<Key>([^<]+)</Key>", xml)
+        sizes = re.findall(r"<Size>(\d+)</Size>", xml)
+        print(f"{len(keys)} objects under 'Crime Statistics/':")
+        for k, s in zip(keys, sizes):
+            print(f"  {int(s)/1e6:8.1f} MB  {k}")
+        trunc = re.search(r"<IsTruncated>(\w+)</IsTruncated>", xml)
+        print(f"truncated: {trunc.group(1) if trunc else '?'}")
     except Exception as e:  # noqa: BLE001
-        print(f"rta.qld.gov.au scrape FAILED ({e})")
+        print(f"S3 listing FAILED ({e!r})")
+    # header of the most promising suburb-level file if present
+    for cand in ("Suburb_Reported_Offences_Number.csv", "Division_Reported_Offences_Number.csv"):
+        sample_csv("https://open-crime-data.s3-ap-southeast-2.amazonaws.com/Crime%20Statistics/"
+                   + cand, cand)
 
-    section("ZONING — QSpatial statewide land-use zoning (ArcGIS)")
+    section("PRICES — open sale-price candidates (QVAS itself is paid)")
+    for q in ("median sale price", "dwelling sales locality", "residential land activity",
+              "property transfers"):
+        try:
+            for pkg in ckan_search(q, rows=3):
+                tab = show_package(pkg, max_res=5)
+                if tab:
+                    sample_csv(tab["url"], tab.get("name", "")[:50])
+        except Exception as e:  # noqa: BLE001
+            print(f"FAILED ({e!r})")
     base = "https://spatial-gis.information.qld.gov.au/arcgis/rest/services"
     try:
-        js = _get(f"{base}?f=json").json()
-        print(f"root folders: {js.get('folders')}")
-        for folder in ("PlanningCadastre", "Basemaps", "Boundaries"):
-            if folder in (js.get("folders") or []):
-                try:
-                    arcgis_folder(base, folder)
-                except Exception as e:  # noqa: BLE001
-                    print(f"{folder}: FAILED ({e})")
+        arcgis_folder(base, "RuralPropertySales")
     except Exception as e:  # noqa: BLE001
-        print(f"QSpatial root FAILED ({e})")
-    # the commonly cited statewide layer (probe both MapServer + layer 0)
-    for u, lbl in ((f"{base}/PlanningCadastre/LandUseZoning/MapServer", "LandUseZoning MapServer"),
-                   (f"{base}/PlanningCadastre/LandUseZoning/MapServer/0", "LandUseZoning layer 0")):
-        arcgis_layer_probe(u, lbl)
+        print(f"RuralPropertySales FAILED ({e!r})")
 
-    section("TRANSPORT — TransLink SEQ GTFS stops + patronage (CKAN)")
+    section("RENTS — RTA median rents (current URLs + CKAN)")
+    for url in ("https://www.rta.qld.gov.au/forms-resources/median-rents/median-rents-quick-finder",
+                "https://www.rta.qld.gov.au/median-rents",
+                "https://www.rta.qld.gov.au/forms-resources/median-rents"):
+        try:
+            r = requests.get(url, headers=BROWSER, timeout=60, allow_redirects=True)
+            print(f"GET {url} -> {r.status_code} (final: {r.url})")
+            if r.ok:
+                links = sorted(set(re.findall(r'href="([^"]+\.(?:xlsx|csv|xls|json)[^"]*)"', r.text, re.I)))
+                print(f"  {len(links)} file links:")
+                for ln in links[:15]:
+                    print(f"    {ln}")
+                # any API/data endpoints embedded in the page?
+                apis = sorted(set(re.findall(r'"(https?://[^"]*(?:api|data)[^"]*)"', r.text, re.I)))[:10]
+                for a in apis:
+                    print(f"    api? {a}")
+        except Exception as e:  # noqa: BLE001
+            print(f"GET {url} FAILED ({e!r})")
+    for q in ("median weekly rent", "RTA rents", "rental data"):
+        try:
+            for pkg in ckan_search(q, rows=3):
+                tab = show_package(pkg, max_res=5)
+                if tab:
+                    sample_csv(tab["url"], tab.get("name", "")[:50])
+        except Exception as e:  # noqa: BLE001
+            print(f"FAILED ({e!r})")
+
+    section("ZONING — layer lists of the real PlanningCadastre services")
+    for svc in ("PlanningCadastre/StatePlanning", "PlanningCadastre/LandUse",
+                "PlanningCadastre/PriorityDevelopmentAreas"):
+        arcgis_layer_probe(f"{base}/{svc}/MapServer", svc)
+    for q in ("planning scheme zones", "zoning"):
+        try:
+            for pkg in ckan_search(q, rows=4):
+                show_package(pkg, max_res=4)
+        except Exception as e:  # noqa: BLE001
+            print(f"FAILED ({e!r})")
+    # Brisbane City Council opendatasoft: city plan zoning (BCC LGA only, but a
+    # concrete fallback if no statewide layer exists)
     try:
-        r = requests.get("https://gtfsrt.api.translink.com.au/GTFS/SEQ_GTFS.zip",
-                         headers=BROWSER, timeout=120)
-        r.raise_for_status()
-        print(f"SEQ_GTFS.zip: {len(r.content)/1e6:.1f} MB")
-        with zipfile.ZipFile(io.BytesIO(r.content)) as z:
-            print(f"  files: {z.namelist()[:10]}")
-            for name in ("stops.txt", "routes.txt"):
-                if name in z.namelist():
-                    lines = z.open(name).read(3000).decode("utf-8", "replace").splitlines()
-                    print(f"  head of {name}:")
-                    for ln in lines[:2]:
-                        print(f"    | {ln[:280]}")
+        js = _get("https://data.brisbane.qld.gov.au/api/explore/v2.1/catalog/datasets",
+                  params={"where": 'search(dataset_id, "zoning")', "limit": "10"},
+                  headers=BROWSER).json()
+        for d in js.get("results", []):
+            print(f"BCC dataset: {d.get('dataset_id')}  ({(d.get('metas') or {}).get('default', {}).get('title')})")
     except Exception as e:  # noqa: BLE001
-        print(f"SEQ GTFS FAILED ({e})")
-    for q in ("translink patronage", "rail station patronage"):
-        try:
-            for pkg in ckan_search(q, rows=3):
-                tab = show_package(pkg)
-                if tab:
-                    sample_csv(tab["url"], tab.get("name", "")[:50])
-        except Exception as e:  # noqa: BLE001
-            print(f"FAILED ({e})")
+        print(f"BCC catalog FAILED ({e!r})")
 
-    section("SCHOOLS — Qld state school locations (CKAN)")
-    for q in ("state school locations", "school enrolments"):
+    section("TRANSPORT — station-level patronage (go card) on CKAN")
+    for q in ("go card", "station entries", "SEQ patronage"):
         try:
             for pkg in ckan_search(q, rows=3):
-                tab = show_package(pkg)
+                tab = show_package(pkg, max_res=6)
                 if tab:
                     sample_csv(tab["url"], tab.get("name", "")[:50])
         except Exception as e:  # noqa: BLE001
-            print(f"FAILED ({e})")
+            print(f"FAILED ({e!r})")
+
+    section("SCHOOLS — header of the schools-directory CSV")
+    sample_csv("https://www.data.qld.gov.au/dataset/0d7eee4a-2990-4195-9d3b-89f4af818e32/"
+               "resource/5b39065c-df32-415c-994c-5ff12f8de997/download/centredetails_may_2020.csv",
+               "centredetails_may_2020.csv")
+    for q in ("schools directory locations", "school details"):
+        try:
+            for pkg in ckan_search(q, rows=3):
+                tab = show_package(pkg, max_res=4)
+                if tab:
+                    sample_csv(tab["url"], tab.get("name", "")[:50])
+        except Exception as e:  # noqa: BLE001
+            print(f"FAILED ({e!r})")
 
 
 if __name__ == "__main__":
