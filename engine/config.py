@@ -11,10 +11,37 @@ DATA_RAW = ROOT / "data_raw"          # cached source downloads (gitignored)
 PUBLIC = ROOT / "public"
 PUBLIC_DATA = PUBLIC / "data"
 
-# --- Geography -------------------------------------------------------------
-# We score ABS SA2 areas ("suburbs") inside one Greater Capital City.
+# --- Geography / city profile -----------------------------------------------
+# We score ABS SA2 areas ("suburbs") inside one Greater Capital City. Everything
+# city-specific the frontend needs ships inside scores.json (state, regions),
+# so the static site stays city-agnostic. Adding a city = a new profile here
+# plus per-state source adapters — see docs/AUSTRALIA.md for the full plan.
 GCC_NAME = "Greater Melbourne"        # matches GCC_NAME21 in the ABS shapefile
 STATE_NAME = "Victoria"
+STATE_CODE = "VIC"                    # keys the frontend's per-state tables (stamp duty)
+
+# Compass-word -> ABS SA4 lists for the Ask box's region filter. Curated per
+# city because these are colloquial judgment calls, not string matches ("east"
+# must not match "Melbourne - South East"; "inner west" colloquially means the
+# West SA4). ORDER MATTERS: the frontend takes the first key that matches, so
+# longer phrases must come before the single words they contain.
+CITY_REGIONS = {
+    "inner west": ["Melbourne - West"],
+    "inner north": ["Melbourne - Inner"],
+    "inner east": ["Melbourne - Inner East"],
+    "inner south": ["Melbourne - Inner South"],
+    "outer east": ["Melbourne - Outer East"],
+    "north east": ["Melbourne - North East"],
+    "north west": ["Melbourne - North West"],
+    "south east": ["Melbourne - South East"],
+    "inner": ["Melbourne - Inner", "Melbourne - Inner East", "Melbourne - Inner South"],
+    "west": ["Melbourne - West", "Melbourne - North West"],
+    "north": ["Melbourne - North East", "Melbourne - North West"],
+    "east": ["Melbourne - Inner East", "Melbourne - Outer East", "Melbourne - North East"],
+    "south": ["Melbourne - Inner South", "Melbourne - South East", "Mornington Peninsula"],
+    "mornington": ["Mornington Peninsula"],
+    "peninsula": ["Mornington Peninsula"],
+}
 
 # --- Data sources (all free, public) --------------------------------------
 # Boundaries: ABS ASGS Edition 3 SA2 (2021), GDA2020 shapefile (~48 MB).

@@ -8,7 +8,7 @@
   // Versioned data URLs: keeps code + data cache-coherent on GitHub Pages
   // (bump together with the ?v= asset versions in index.html; the deploy
   // workflow overwrites both with the run number).
-  const DATA_V = "22";
+  const DATA_V = "23";
   const boot = document.getElementById("boot");
   const fetchJson = url => fetch(url).then(r => {
     if (!r.ok) throw new Error(url.split("?")[0] + " → HTTP " + r.status);
@@ -133,9 +133,19 @@
   }
 
   // ---- map --------------------------------------------------------------
+  // City-agnostic initial view: derive the study-area bounds from the loaded
+  // boundaries instead of hardcoding a centre, so a second city "just works".
+  let bW = 180, bS = 90, bE = -180, bN = -90;
+  for (const f of geo.features) {
+    const g = f.geometry, polys = g.type === "Polygon" ? [g.coordinates] : g.coordinates;
+    for (const poly of polys) for (const [x, y] of poly[0]) {
+      if (x < bW) bW = x; if (x > bE) bE = x; if (y < bS) bS = y; if (y > bN) bN = y;
+    }
+  }
+  const CITY_BOUNDS = L.latLngBounds([bS, bW], [bN, bE]);
   // Canvas renderer: one bitmap instead of 361+ SVG nodes — much smoother pan/zoom
   const map = L.map("map", { zoomControl: true, preferCanvas: true,
-    renderer: L.canvas({ padding: 0.4 }) }).setView([-37.84, 145.05], 10);
+    renderer: L.canvas({ padding: 0.4 }) }).fitBounds(CITY_BOUNDS, { padding: [10, 10] });
   const tilesFor = dark => L.tileLayer(
     `https://{s}.basemaps.cartocdn.com/${dark ? "dark_nolabels" : "light_nolabels"}/{z}/{x}/{y}{r}.png`,
     { subdomains: "abcd", maxZoom: 19, attribution: '&copy; <a href="https://openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/attributions">CARTO</a> · Data: ABS, CSA Vic' });
@@ -207,7 +217,7 @@
   // Apple-style ring gauges for the three headline scores
   const RING_C = 2 * Math.PI * 26;
   const ring = (label, val, color) => `
-    <div class="ring" title="${label} ${val} — rank-based: higher than ${Math.round(val)}% of Greater Melbourne">
+    <div class="ring" title="${label} ${val} — rank-based: higher than ${Math.round(val)}% of ${data.city}">
       <div class="ring-g"><svg viewBox="0 0 64 64" aria-hidden="true">
         <circle class="ring-track" cx="32" cy="32" r="26"/>
         <circle class="ring-fill" cx="32" cy="32" r="26" stroke="${color}"
@@ -294,7 +304,7 @@
         ${m.median_unit ? `Unit ${money(m.median_unit)}${m.unit_12m != null ? ` (${m.unit_12m >= 0 ? "+" : ""}${m.unit_12m}% 12m)` : ""} · ` : ""}3-yr ${m.house_3yr_cagr ?? "–"}%/yr
         ${sig(m.growth_signal + " growth", m.growth_signal.toLowerCase())}${m.value_signal ? sig(m.value_signal, "val") : ""}${m.yield_signal ? sig(m.yield_signal, m.yield_house >= 4.2 ? "strong" : m.yield_house >= 3.2 ? "moderate" : "soft") : ""}
       </div>
-      ${m.afford_ratio ? `<div class="market-sub" title="Median house price ÷ median annual household income for this suburb (ABS Census 2021 income, indexed). Greater Melbourne median is around ${data.afford_median || 10}×.">Affordability ≈ <b>${m.afford_ratio}×</b> local household income${m.income_weekly ? ` · income ~$${Math.round(m.income_weekly).toLocaleString()}/wk` : ""}</div>` : ""}
+      ${m.afford_ratio ? `<div class="market-sub" title="Median house price ÷ median annual household income for this suburb (ABS Census 2021 income, indexed). ${data.city} median is around ${data.afford_median || 10}×.">Affordability ≈ <b>${m.afford_ratio}×</b> local household income${m.income_weekly ? ` · income ~$${Math.round(m.income_weekly).toLocaleString()}/wk` : ""}</div>` : ""}
       ${rentLine ? `<div class="market-sub">${rentLine}</div>` : ""}
       ${prominent && explOf(a).invest ? `<p class="market-note">${explOf(a).invest}</p>` : ""}</div>`;
   }
@@ -379,7 +389,7 @@
           <button class="star-btn${shortlist.has(code) ? " on" : ""}" id="starBtn"
             title="${shortlist.has(code) ? "Remove from" : "Add to"} your shortlist (saved on this device; outlined in gold on the map)"
             aria-label="Toggle shortlist">${shortlist.has(code) ? "★" : "☆"}</button>
-          <span class="grade" title="Relative tier of the Overall score at the default blend: A+ = top ~10% of Greater Melbourne.${customW ? " Grades keep the default weighting — your custom weights change the scores, not the letter." : ""}" style="${gradeStyle(a.grade)}">${a.grade}${gradeTrend(code, a.grade)}</span>
+          <span class="grade" title="Relative tier of the Overall score at the default blend: A+ = top ~10% of ${data.city}.${customW ? " Grades keep the default weighting — your custom weights change the scores, not the letter." : ""}" style="${gradeStyle(a.grade)}">${a.grade}${gradeTrend(code, a.grade)}</span>
         </div>
       </div>
       <div class="chips">${chips}</div>
@@ -888,13 +898,15 @@
   let addrMarker = null;
   async function searchAddress(q) {
     try {
+      const vb = CITY_BOUNDS.pad(0.05);   // geocode only inside the study area
       const url = "https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=au" +
-        "&viewbox=144.2,-37.1,145.9,-38.7&bounded=1&q=" + encodeURIComponent(q);
+        `&viewbox=${vb.getWest().toFixed(2)},${vb.getNorth().toFixed(2)},${vb.getEast().toFixed(2)},${vb.getSouth().toFixed(2)}` +
+        "&bounded=1&q=" + encodeURIComponent(q);
       const res = await fetch(url, { headers: { "Accept-Language": "en" } }).then(r => r.json());
-      if (!res.length) { toast("Couldn't find that address inside Greater Melbourne."); return; }
+      if (!res.length) { toast(`Couldn't find that address inside ${data.city}.`); return; }
       const lat = +res[0].lat, lon = +res[0].lon;
       const code = sa2At(lon, lat);
-      if (!code) { toast("That point is outside the Greater Melbourne study area."); return; }
+      if (!code) { toast(`That point is outside the ${data.city} study area.`); return; }
       if (addrMarker) map.removeLayer(addrMarker);
       addrMarker = L.marker([lat, lon], { title: res[0].display_name }).addTo(map)
         .bindPopup(res[0].display_name.split(",").slice(0, 3).join(",")).openPopup();
@@ -1009,8 +1021,10 @@
   const AI_ENDPOINT = "";
 
   // compass words -> explicit ABS SA4 lists ("east" alone must never match
-  // "Melbourne - South East"; longest phrase wins so "north west" beats "west")
-  const REGION_SA4 = {
+  // "Melbourne - South East"; first matching key wins, so the engine ships the
+  // map with longer phrases first). Curated per city in engine/config.py and
+  // delivered via scores.json; the literal below only covers cached old data.
+  const REGION_SA4 = data.regions || {
     "inner west": ["Melbourne - West"],
     "inner north": ["Melbourne - Inner"],
     "inner east": ["Melbourne - Inner East"],
@@ -1076,18 +1090,25 @@
                how: "ranked by gross rental yield" },
   };
 
-  // Victorian general-rate stamp duty (owner-occupier/investor, no concessions).
-  // Brackets as at FY 2025-26 (sro.vic.gov.au — update STAMP_DUTY_VINTAGE too):
+  // Per-state transfer ("stamp") duty — general rates, no concessions. Keyed by
+  // scores.json's `state` so each city uses its own table; add a state's entry
+  // when its city ships (see docs/AUSTRALIA.md). No entry = no duty estimate.
+  // VIC brackets as at FY 2025-26 (sro.vic.gov.au — update vintage too):
   //   ≤$25k 1.4% · ≤$130k $350 + 2.4% · ≤$960k $2,870 + 6% · ≤$2M flat 5.5% ·
   //   >$2M $110k + 6.5% of the excess.
-  const STAMP_DUTY_VINTAGE = "FY 2025-26";
-  function vicStampDuty(v) {
-    if (v <= 25000) return v * 0.014;
-    if (v <= 130000) return 350 + (v - 25000) * 0.024;
-    if (v <= 960000) return 2870 + (v - 130000) * 0.06;
-    if (v <= 2000000) return v * 0.055;
-    return 110000 + (v - 2000000) * 0.065;
-  }
+  const STAMP_DUTY = {
+    VIC: {
+      name: "Vic", vintage: "FY 2025-26",
+      calc: v => {
+        if (v <= 25000) return v * 0.014;
+        if (v <= 130000) return 350 + (v - 25000) * 0.024;
+        if (v <= 960000) return 2870 + (v - 130000) * 0.06;
+        if (v <= 2000000) return v * 0.055;
+        return 110000 + (v - 2000000) * 0.065;
+      },
+    },
+  };
+  const cityDuty = STAMP_DUTY[data.state || "VIC"];   // old cached data is Vic
 
   function runAsk() {
     const q = askInput.value.trim();
@@ -1118,8 +1139,8 @@
       askSet = null; refresh();
       return;
     }
-    const duty = p.budget && !p.rentMax
-      ? ` Stamp duty on a ${money(p.budget)} buy ≈ <b>$${Math.round(vicStampDuty(p.budget)).toLocaleString()}</b> (Vic general rate, ${STAMP_DUTY_VINTAGE} — concessions may apply).`
+    const duty = p.budget && !p.rentMax && cityDuty
+      ? ` Stamp duty on a ${money(p.budget)} buy ≈ <b>$${Math.round(cityDuty.calc(p.budget)).toLocaleString()}</b> (${cityDuty.name} general rate, ${cityDuty.vintage} — concessions may apply).`
       : "";
     askSummary.innerHTML = `<b>${rows.length}</b> suburbs fit <b>${parts.join(" · ")}</b> — top ${top.length} below, highlighted on the map.
       <span class="ask-how">${g.how}${customW && (p.goal === "live" || p.goal === "rent" || p.goal === "develop") ? " (your custom weights)" : ""}.${duty}</span>`;

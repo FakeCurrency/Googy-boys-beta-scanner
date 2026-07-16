@@ -176,6 +176,8 @@ def build() -> None:
 
     payload = {
         "city": config.GCC_NAME,
+        "state": config.STATE_CODE,       # keys the frontend's per-state tables
+        "regions": config.CITY_REGIONS,   # Ask box compass-word -> SA4 filter
         "generated": dt.date.today().isoformat(),
         "count": len(scored),
         "default_blend": config.DEFAULT_BLEND,

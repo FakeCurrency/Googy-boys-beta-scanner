@@ -152,8 +152,10 @@ suburbs. The site is fully functional without it — see `cloudflare-worker/READ
 - **P6** Affordability/income, population growth, crime trends, parks + airport noise, Ask,
   shortlist, 3-way compare, PWA/offline, engine tests, CI minify + monthly refresh — ✅ **done**
 - **P7** Height/design overlays (DDO), vegetation controls, land values, GTFS travel times,
-  a second city (the engine's geography layer is city-agnostic — Geelong or Sydney would be a
-  fork of `config.py` + new source adapters)
+  a second city and the road to all of Australia — the city profile now lives in
+  `engine/config.py` and ships in the data, so a new city is a profile + per-state
+  source adapters. The full state-by-state source matrix, decisions (per-city
+  percentiles, per-city data dirs) and sequencing live in **`docs/AUSTRALIA.md`**.
 
 ## Deploy
 
